@@ -131,7 +131,7 @@ The system implements **Human-in-the-Loop (HITL)** checkpoints:
 ## Project Structure
 
 ```
-high-frequency-trading-platform/
+hft-causal-platform/
 ├── frontend/                      # Vercel-deployed dashboard
 │   ├── src/
 │   │   ├── components/           # Agent status, performance charts, portfolio widgets
@@ -146,18 +146,23 @@ high-frequency-trading-platform/
 │   ├── app/
 │   │   ├── api/                  # Routes for data ingestion, agent orchestration
 │   │   ├── models/               # Pydantic schemas for sentiment, regime, ATE
-│   │   ├── services/
-│   │   │   ├── data_pipeline.py  # Finnhub/Alpha Vantage/Reddit ingestion
-│   │   │   ├── sentiment.py      # FinBERT tokenization + inference
-│   │   │   ├── causal_engine.py  # PC algorithm, DML impact estimation
-│   │   │   ├── agents.py         # LangGraph orchestration
-│   │   │   └── backtest.py       # Vectorized + event-based simulation
 │   │   └── main.py               # FastAPI entry point
+│   ├── ingestion/
+│   │   ├── rate_limiter.py       # Token bucket for Alpha Vantage (5 req/min)
+│   │   ├── finnhub_stream.py     # WebSocket client with exponential backoff
+│   │   └── __init__.py
+│   ├── services/
+│   │   ├── data_pipeline.py      # Finnhub/Alpha Vantage/Reddit ingestion
+│   │   ├── sentiment.py          # FinBERT tokenization + inference
+│   │   ├── causal_engine.py      # PC algorithm, DML impact estimation
+│   │   ├── agents.py             # LangGraph orchestration
+│   │   └── backtest.py           # Vectorized + event-based simulation
 │   ├── requirements.txt           # Dependencies: causal-learn, econml, polars, langraph
 │   ├── Dockerfile                 # Render containerization
 │   └── README.md
 ├── docker-compose.yml             # Local dev orchestration
 ├── CI_CD_config.yml               # GitHub Actions for automated validation
+├── Architecture.png               # System architecture diagram
 └── README.md                       # This file
 ```
 
@@ -186,7 +191,7 @@ high-frequency-trading-platform/
 
 ## System Architecture Diagram
 
-![HFT Causal Platform Architecture](../Architecture.png)
+![HFT Causal Platform Architecture](./Architecture.png)
 
 ### Simulation Engine (`backend/app/services/backtest.py`)
 - **Vectorized**: vectorbt for rapid parameter sweep testing
