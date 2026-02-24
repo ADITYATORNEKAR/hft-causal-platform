@@ -4,7 +4,7 @@
 
 A full-stack portfolio analytics platform combining rigorous causal inference, AI agents, and backtesting. Built entirely on a **free-forever** stack — no credit card, no paid tiers.
 
-Live demo: `https://hft-causal-platform.vercel.app` · API: `https://hft-causal-platform.fly.dev/docs`
+Live demo: `https://hft-causal-platform.vercel.app` · API: `https://hft-causal-platform.onrender.com/docs`
 
 ---
 
@@ -36,7 +36,7 @@ Enter any stock tickers and get:
 | Backend | FastAPI + Uvicorn | — | Open source |
 | Frontend | Next.js 14 + Tailwind + D3 + Recharts | — | Open source |
 | Database | SQLite (zero-config) | None | Free |
-| Backend deploy | Fly.io free tier (always-on) | Free account | Free |
+| Backend deploy | Render free tier (no CC required) | Free account | Free |
 | Frontend deploy | Vercel hobby tier | Free account | Free |
 
 ---
@@ -94,7 +94,7 @@ docker-compose up --build
 ## Architecture
 
 ```
-Browser → Next.js (Vercel) → FastAPI (Fly.io)
+Browser → Next.js (Vercel) → FastAPI (Render)
                                     │
               ┌─────────────────────┤
               │                     │
@@ -123,21 +123,23 @@ WS   /api/v1/live/prices?tickers=AAPL,MSFT
 
 ## Deploy
 
-### Backend → Fly.io (always-on free tier)
+### Backend → Render (free, no credit card)
 
-```bash
-cd backend
-fly launch
-fly secrets set FINNHUB_API_KEY=xxx FRED_API_KEY=xxx GROQ_API_KEY=xxx
-fly deploy
-```
+1. Sign up at [render.com](https://render.com)
+2. **New → Web Service** → connect this GitHub repo
+3. Render auto-detects `render.yaml` — set environment variables in the dashboard:
+   - `FINNHUB_API_KEY`, `FRED_API_KEY`, `GROQ_API_KEY`
+4. Click **Deploy**
+
+> **Keep it warm (optional):** Add a free [UptimeRobot](https://uptimerobot.com) monitor
+> pinging `https://your-app.onrender.com/api/v1/health` every 5 min to avoid cold starts.
 
 ### Frontend → Vercel
 
 ```bash
 cd frontend
 npx vercel
-# Set: NEXT_PUBLIC_API_URL=https://hft-causal-platform.fly.dev
+# Set: NEXT_PUBLIC_API_URL=https://hft-causal-platform.onrender.com
 ```
 
 ---

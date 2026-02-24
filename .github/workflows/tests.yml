@@ -85,4 +85,4 @@ jobs:
         run: npm run build
         working-directory: frontend
         env:
-          NEXT_PUBLIC_API_URL: https://hft-causal-platform.fly.dev
+          NEXT_PUBLIC_API_URL: https://hft-causal-platform.onrender.com
