@@ -2,8 +2,6 @@ services:
   - type: web
     name: hft-causal-platform
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
     envVars:
       - key: FINNHUB_API_KEY
         sync: false
