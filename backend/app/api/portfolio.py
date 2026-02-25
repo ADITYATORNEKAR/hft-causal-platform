@@ -202,6 +202,33 @@ async def analyze_portfolio(req: PortfolioRequest):
     except Exception:
         pass
 
+    # --- Portfolio Optimization (inline, so agent has access to optimal weights) ---
+    optimization_result = None
+    try:
+        if cov_matrix_json and cov_matrix_json != "[]":
+            cov = json.loads(cov_matrix_json)
+            exp_returns: dict[str, float] = {}
+            for ticker in available_tickers:
+                tf = ticker_forecasts.get(ticker, {})
+                hist = tf.get("historical", [])
+                fc_1y = tf.get("forecast_1y", {})
+                if hist and fc_1y and hist[-1].get("yhat", 0) > 0:
+                    current = hist[-1]["yhat"]
+                    future = fc_1y.get("yhat", current)
+                    exp_returns[ticker] = ((future - current) / current) * 100
+                else:
+                    exp_returns[ticker] = 0.0
+            if len(available_tickers) >= 2:
+                optimization_result = optimize_portfolio(available_tickers, exp_returns, cov)
+    except Exception:
+        pass
+
+    # Build raw positions list for the agent (includes purchase_price + current_price)
+    positions_for_agent = []
+    if pnl_summary_dict:
+        for pos_data in pnl_summary_dict.get("positions", []):
+            positions_for_agent.append(pos_data)
+
     # --- AI Insights ---
     try:
         insights = await generate_insights(
@@ -210,7 +237,10 @@ async def analyze_portfolio(req: PortfolioRequest):
             sentiment=sentiment,
             pnl_summary=pnl_summary_dict,
             forecast_summary=forecast_summary,
+            optimization_result=optimization_result,
+            positions=positions_for_agent,
             groq_api_key=req.groq_api_key,
+            finnhub_api_key=req.finnhub_api_key,
         )
     except Exception as e:
         insights = {"key_findings": [], "agent_narrative": str(e), "error": str(e)}
