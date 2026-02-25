@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, KeyboardEvent } from "react";
-import { X, Search, DollarSign } from "lucide-react";
+import { X, Search, DollarSign, Upload, FileText, AlertCircle } from "lucide-react";
 import { searchTickers } from "@/lib/api";
 import type { PositionInput, TickerSearchResult } from "@/lib/types";
 
@@ -40,6 +40,10 @@ export default function PortfolioForm({ onAnalyze, isLoading, defaultTickers }: 
   const [searchResults, setSearchResults] = useState<TickerSearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvDragOver, setCsvDragOver] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
 
   // Pre-fill from URL param
   useEffect(() => {
@@ -134,17 +138,101 @@ export default function PortfolioForm({ onAnalyze, isLoading, defaultTickers }: 
 
   const anyPositionsFilled = rows.some((r) => r.quantity || r.purchase_price);
 
+  const parseCSV = (text: string) => {
+    setCsvError(null);
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) {
+      setCsvError("CSV must have a header row and at least one data row.");
+      return;
+    }
+
+    // Normalise header names
+    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+    const tickerIdx = headers.findIndex((h) => ["ticker", "symbol", "stock"].includes(h));
+    const qtyIdx = headers.findIndex((h) => ["quantity", "qty", "shares", "units"].includes(h));
+    const priceIdx = headers.findIndex((h) =>
+      ["purchase_price", "avg_price", "avg_buy_price", "price", "cost", "cost_basis"].includes(h)
+    );
+
+    if (tickerIdx === -1) {
+      setCsvError("CSV must have a 'ticker' column (or 'symbol' / 'stock').");
+      return;
+    }
+
+    const parsed: StockRow[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(",").map((c) => c.trim().replace(/^["']|["']$/g, ""));
+      const ticker = cols[tickerIdx]?.toUpperCase();
+      if (!ticker) continue;
+      if (parsed.length + rows.length >= 20) {
+        errors.push(`Row ${i + 1}: skipped — 20-stock limit reached.`);
+        break;
+      }
+      if (rows.some((r) => r.ticker === ticker) || parsed.some((r) => r.ticker === ticker)) {
+        errors.push(`Row ${i + 1}: ${ticker} already in portfolio — skipped.`);
+        continue;
+      }
+      const qty = qtyIdx !== -1 ? cols[qtyIdx] ?? "" : "";
+      const price = priceIdx !== -1 ? cols[priceIdx] ?? "" : "";
+      parsed.push({ ticker, companyName: "", quantity: qty, purchase_price: price });
+    }
+
+    if (parsed.length === 0) {
+      setCsvError(errors.length > 0 ? errors[0] : "No valid rows found in CSV.");
+      return;
+    }
+
+    setRows((prev) => [...prev, ...parsed]);
+    if (errors.length > 0) setCsvError(errors.join(" "));
+  };
+
+  const handleCSVFile = (file: File) => {
+    if (!file.name.endsWith(".csv") && file.type !== "text/csv") {
+      setCsvError("Please upload a .csv file.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => parseCSV(e.target?.result as string);
+    reader.readAsText(file);
+  };
+
   return (
     <form
       onSubmit={handleSubmit}
       className="rounded-xl border border-surface-border bg-surface-card p-6 space-y-5"
     >
+      {/* Hidden CSV file input */}
+      <input
+        ref={csvInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleCSVFile(file);
+          e.target.value = "";
+        }}
+      />
+
       {/* Search input */}
       <div>
-        <label className="mb-2 block text-sm font-medium text-slate-300">
-          Search Stocks
-          <span className="ml-2 text-xs text-slate-500">(ticker symbol or company name)</span>
-        </label>
+        <div className="mb-2 flex items-center justify-between">
+          <label className="text-sm font-medium text-slate-300">
+            Search Stocks
+            <span className="ml-2 text-xs text-slate-500">(ticker symbol or company name)</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => csvInputRef.current?.click()}
+            disabled={isLoading || rows.length >= 20}
+            className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-1 text-xs text-slate-400 hover:border-brand-500 hover:text-brand-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Upload className="h-3 w-3" />
+            Upload CSV
+          </button>
+        </div>
         <div className="relative">
           <div className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface px-3 py-2.5 focus-within:border-brand-500 transition-colors">
             {searchLoading ? (
@@ -206,6 +294,54 @@ export default function PortfolioForm({ onAnalyze, isLoading, defaultTickers }: 
           <p className="mt-1 text-xs text-slate-600">Add 2–20 stocks for causal analysis</p>
         )}
       </div>
+
+      {/* CSV drag-and-drop zone — shown when no stocks added yet */}
+      {rows.length === 0 && !isLoading && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setCsvDragOver(true); }}
+          onDragLeave={() => setCsvDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setCsvDragOver(false);
+            const file = e.dataTransfer.files[0];
+            if (file) handleCSVFile(file);
+          }}
+          onClick={() => csvInputRef.current?.click()}
+          className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed py-6 transition-colors ${
+            csvDragOver
+              ? "border-brand-500 bg-brand-500/5"
+              : "border-slate-700 hover:border-slate-500"
+          }`}
+        >
+          <FileText className={`h-7 w-7 ${csvDragOver ? "text-brand-400" : "text-slate-600"}`} />
+          <div className="text-center">
+            <p className="text-sm font-medium text-slate-400">
+              Drop a CSV file here, or{" "}
+              <span className="text-brand-400 underline underline-offset-2">click to upload</span>
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              Required column: <span className="font-mono text-slate-500">ticker</span> · Optional:{" "}
+              <span className="font-mono text-slate-500">quantity</span>,{" "}
+              <span className="font-mono text-slate-500">purchase_price</span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* CSV parse error */}
+      {csvError && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+          <p className="text-xs text-red-400">{csvError}</p>
+          <button
+            type="button"
+            onClick={() => setCsvError(null)}
+            className="ml-auto shrink-0 text-red-400/60 hover:text-red-400"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       {/* Holdings rows */}
       {rows.length > 0 && (
