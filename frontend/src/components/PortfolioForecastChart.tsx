@@ -16,19 +16,19 @@ import type { PortfolioForecast } from "@/lib/types";
 type Horizon = "30d" | "60d" | "90d" | "6m" | "1y";
 
 const HORIZONS: { id: Horizon; label: string; days: number }[] = [
-  { id: "30d", label: "30 Days", days: 30 },
-  { id: "60d", label: "60 Days", days: 60 },
-  { id: "90d", label: "90 Days", days: 90 },
-  { id: "6m", label: "6 Months", days: 182 },
-  { id: "1y", label: "1 Year", days: 365 },
+  { id: "30d", label: "30d", days: 30 },
+  { id: "60d", label: "60d", days: 60 },
+  { id: "90d", label: "90d", days: 90 },
+  { id: "6m", label: "6m", days: 182 },
+  { id: "1y", label: "12m", days: 365 },
 ];
 
 const HORIZON_KEY: Record<Horizon, keyof PortfolioForecast> = {
   "30d": "forecast_30d",
   "60d": "forecast_60d",
   "90d": "forecast_90d",
-  "6m":  "forecast_6m",
-  "1y":  "forecast_1y",
+  "6m": "forecast_6m",
+  "1y": "forecast_1y",
 };
 
 function fmtDollar(n: number) {
@@ -44,11 +44,13 @@ function fmtPct(n: number) {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 }
 
-export default function PortfolioForecastChart({
-  forecast,
-}: {
+interface Props {
   forecast: PortfolioForecast;
-}) {
+  /** Total cost basis (Σ qty × purchase_price) from position P&L summary. */
+  costBasis?: number;
+}
+
+export default function PortfolioForecastChart({ forecast, costBasis }: Props) {
   const [horizon, setHorizon] = useState<Horizon>("1y");
 
   const horizonMeta = HORIZONS.find((h) => h.id === horizon)!;
@@ -59,7 +61,6 @@ export default function PortfolioForecastChart({
     yhat_upper: number;
   };
 
-  // Slice future series to selected horizon
   const futureSlice = forecast.future_series.slice(0, horizonMeta.days);
 
   const chartData = futureSlice.map((pt) => ({
@@ -70,6 +71,7 @@ export default function PortfolioForecastChart({
   }));
 
   const allValues = chartData.flatMap((d) => [d.value, d.lower, d.upper]);
+  if (costBasis && costBasis > 0) allValues.push(costBasis);
   const minVal = allValues.length ? Math.min(...allValues) * 0.97 : 0;
   const maxVal = allValues.length ? Math.max(...allValues) * 1.03 : 100;
 
@@ -79,6 +81,11 @@ export default function PortfolioForecastChart({
           forecast.current_portfolio_value) *
         100
       : 0;
+
+  const returnVsCostBasis =
+    costBasis && costBasis > 0 && forecast.forecast_1y
+      ? ((forecast.forecast_1y.yhat - costBasis) / costBasis) * 100
+      : null;
 
   const tickFormatter = (date: string) => {
     const d = new Date(date);
@@ -91,13 +98,13 @@ export default function PortfolioForecastChart({
     .slice(0, 6);
 
   return (
-    <div className="rounded-xl border border-brand-500/30 bg-surface-card p-5">
+    <div className="rounded-xl border border-indigo-500/30 bg-surface-card p-5">
       {/* Header */}
       <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-semibold text-white text-base">Combined Portfolio Forecast</h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Prophet 12-month forecast · weighted by current market value
+            Prophet 12-month projection · weighted by current market value
           </p>
         </div>
         {/* Horizon toggle */}
@@ -108,7 +115,7 @@ export default function PortfolioForecastChart({
               onClick={() => setHorizon(h.id)}
               className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
                 horizon === h.id
-                  ? "bg-brand-500 text-white"
+                  ? "bg-indigo-500 text-white"
                   : "text-slate-400 hover:text-white"
               }`}
             >
@@ -119,7 +126,7 @@ export default function PortfolioForecastChart({
       </div>
 
       {/* Key metric cards */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className={`mb-4 grid gap-3 ${costBasis ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-2 sm:grid-cols-4"}`}>
         <div className="rounded-lg bg-surface-dark p-3">
           <p className="text-xs text-slate-500">Current Value</p>
           <p className="mt-0.5 text-sm font-bold text-white">
@@ -127,28 +134,58 @@ export default function PortfolioForecastChart({
           </p>
         </div>
         <div className="rounded-lg bg-surface-dark p-3">
-          <p className="text-xs text-slate-500">Forecast ({horizon})</p>
-          <p className={`mt-0.5 text-sm font-bold ${returnAtHorizon >= 0 ? "text-green-400" : "text-red-400"}`}>
+          <p className="text-xs text-slate-500">
+            Forecast ({horizon === "1y" ? "12m" : horizon})
+          </p>
+          <p
+            className={`mt-0.5 text-sm font-bold ${
+              returnAtHorizon >= 0 ? "text-green-400" : "text-red-400"
+            }`}
+          >
             {fmtDollar(horizonPoint.yhat)}
           </p>
         </div>
         <div className="rounded-lg bg-surface-dark p-3">
-          <p className="text-xs text-slate-500">Expected Return</p>
-          <p className={`mt-0.5 text-sm font-bold ${returnAtHorizon >= 0 ? "text-green-400" : "text-red-400"}`}>
+          <p className="text-xs text-slate-500">vs Today</p>
+          <p
+            className={`mt-0.5 text-sm font-bold ${
+              returnAtHorizon >= 0 ? "text-green-400" : "text-red-400"
+            }`}
+          >
             {fmtPct(returnAtHorizon)}
           </p>
         </div>
-        <div className="rounded-lg bg-surface-dark p-3">
-          <p className="text-xs text-slate-500">1-Year Forecast</p>
-          <p className={`mt-0.5 text-sm font-bold ${forecast.expected_return_pct >= 0 ? "text-green-400" : "text-red-400"}`}>
-            {fmtPct(forecast.expected_return_pct)}
-          </p>
-        </div>
+
+        {/* 12-month vs cost basis — shown when positions were entered */}
+        {returnVsCostBasis !== null ? (
+          <div className="rounded-lg bg-surface-dark p-3 border border-amber-500/25">
+            <p className="text-xs text-amber-400">12m vs Cost Basis</p>
+            <p
+              className={`mt-0.5 text-sm font-bold ${
+                returnVsCostBasis >= 0 ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {fmtPct(returnVsCostBasis)}
+            </p>
+            <p className="text-xs text-slate-600">{fmtDollar(costBasis!)}</p>
+          </div>
+        ) : (
+          <div className="rounded-lg bg-surface-dark p-3">
+            <p className="text-xs text-slate-500">12-Month Return</p>
+            <p
+              className={`mt-0.5 text-sm font-bold ${
+                forecast.expected_return_pct >= 0 ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {fmtPct(forecast.expected_return_pct)}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Chart */}
       {chartData.length > 0 ? (
-        <ResponsiveContainer width="100%" height={240}>
+        <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={chartData} margin={{ top: 5, right: 10, bottom: 5, left: 15 }}>
             <defs>
               <linearGradient id="gradPortfolio" x1="0" y1="0" x2="0" y2="1">
@@ -197,14 +234,47 @@ export default function PortfolioForecastChart({
                   : "Lower bound",
               ]}
             />
+            {/* Today / current value baseline */}
             <ReferenceLine
               y={forecast.current_portfolio_value}
               stroke="rgba(255,255,255,0.15)"
               strokeDasharray="4 4"
-              label={{ value: "Today", fill: "#64748b", fontSize: 10, position: "left" }}
+              label={{
+                value: "Today",
+                fill: "#64748b",
+                fontSize: 10,
+                position: "insideBottomLeft",
+              }}
             />
-            <Area type="monotone" dataKey="upper" stroke="none" fill="url(#gradBand)" isAnimationActive={false} />
-            <Area type="monotone" dataKey="lower" stroke="none" fill="transparent" isAnimationActive={false} />
+            {/* Cost basis reference — amber dashed line */}
+            {costBasis && costBasis > 0 && (
+              <ReferenceLine
+                y={costBasis}
+                stroke="#f59e0b"
+                strokeOpacity={0.55}
+                strokeDasharray="3 3"
+                label={{
+                  value: `Cost ${fmtDollar(costBasis)}`,
+                  fill: "#f59e0b",
+                  fontSize: 9,
+                  position: "insideTopLeft",
+                }}
+              />
+            )}
+            <Area
+              type="monotone"
+              dataKey="upper"
+              stroke="none"
+              fill="url(#gradBand)"
+              isAnimationActive={false}
+            />
+            <Area
+              type="monotone"
+              dataKey="lower"
+              stroke="none"
+              fill="transparent"
+              isAnimationActive={false}
+            />
             <Area
               type="monotone"
               dataKey="value"
@@ -223,12 +293,13 @@ export default function PortfolioForecastChart({
         </div>
       )}
 
-      {/* Confidence range + holdings breakdown */}
+      {/* Footer: confidence range + holdings breakdown */}
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <p className="text-xs text-slate-500">
-          80% confidence: {fmtDollar(horizonPoint.yhat_lower)} – {fmtDollar(horizonPoint.yhat_upper)}
+          80% confidence:{" "}
+          {fmtDollar(horizonPoint.yhat_lower)} – {fmtDollar(horizonPoint.yhat_upper)}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
           {topHoldings.map(([ticker, weight]) => (
             <span key={ticker} className="text-xs text-slate-400">
               <span className="font-mono font-bold text-white">{ticker}</span>{" "}

@@ -16,11 +16,11 @@ import type { TickerForecast } from "@/lib/types";
 type Horizon = "30d" | "60d" | "90d" | "6m" | "1y";
 
 const HORIZONS: { id: Horizon; label: string }[] = [
-  { id: "30d", label: "30 Days" },
-  { id: "60d", label: "60 Days" },
-  { id: "90d", label: "90 Days" },
-  { id: "6m", label: "6 Months" },
-  { id: "1y", label: "1 Year" },
+  { id: "30d", label: "30d" },
+  { id: "60d", label: "60d" },
+  { id: "90d", label: "90d" },
+  { id: "6m", label: "6m" },
+  { id: "1y", label: "12m" },
 ];
 
 const HORIZON_DAYS: Record<Horizon, number> = {
@@ -51,14 +51,13 @@ function fmtPct(n: number) {
 export default function ForecastChart({ forecast }: Props) {
   const [horizon, setHorizon] = useState<Horizon>("1y");
 
-  // Build chart data: historical actuals + future forecasts up to chosen horizon
   const horizonDays = HORIZON_DAYS[horizon];
   const futureSlice = forecast.future_series.slice(0, horizonDays);
 
-  // Mark the join point (last historical date)
-  const lastHistDate = forecast.historical.length > 0
-    ? forecast.historical[forecast.historical.length - 1].date
-    : null;
+  const lastHistDate =
+    forecast.historical.length > 0
+      ? forecast.historical[forecast.historical.length - 1].date
+      : null;
 
   const chartData = [
     ...forecast.historical.map((p) => ({
@@ -67,7 +66,6 @@ export default function ForecastChart({ forecast }: Props) {
       forecast: null as number | null,
       lower: null as number | null,
       upper: null as number | null,
-      isHistorical: true,
     })),
     ...futureSlice.map((p) => ({
       date: p.date,
@@ -75,32 +73,48 @@ export default function ForecastChart({ forecast }: Props) {
       forecast: p.yhat,
       lower: p.yhat_lower,
       upper: p.yhat_upper,
-      isHistorical: false,
     })),
   ];
 
-  // Horizon forecast point
   const horizonKey = `forecast_${horizon}` as keyof TickerForecast;
-  const horizonPoint = forecast[horizonKey] as { date: string; yhat: number; yhat_lower: number; yhat_upper: number } | undefined;
-  const currentPrice = forecast.historical.length > 0
-    ? forecast.historical[forecast.historical.length - 1].yhat
-    : null;
+  const horizonPoint = forecast[horizonKey] as {
+    date: string;
+    yhat: number;
+    yhat_lower: number;
+    yhat_upper: number;
+  } | undefined;
+
+  const currentPrice =
+    forecast.historical.length > 0
+      ? forecast.historical[forecast.historical.length - 1].yhat
+      : null;
+
   const expectedReturn =
     currentPrice && horizonPoint && currentPrice > 0
       ? ((horizonPoint.yhat - currentPrice) / currentPrice) * 100
       : null;
 
+  // 12-month target — always computed regardless of selected horizon
+  const target1y = forecast.forecast_1y;
+  const target1yReturn =
+    currentPrice && target1y && currentPrice > 0
+      ? ((target1y.yhat - currentPrice) / currentPrice) * 100
+      : null;
+
   const allPrices = chartData.flatMap((d) =>
     [d.actual, d.forecast, d.lower, d.upper].filter((v): v is number => v !== null)
   );
+  // Extend domain to include the 12-month target price even on shorter horizons
+  if (target1y?.yhat) allPrices.push(target1y.yhat);
   const minPrice = allPrices.length > 0 ? Math.min(...allPrices) * 0.97 : 0;
   const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) * 1.03 : 100;
 
-  // Format x-axis ticks: show month/year only every ~30 points
   const tickFormatter = (date: string) => {
     const d = new Date(date);
     return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
   };
+
+  const show12mCard = horizon !== "1y" && target1y && target1yReturn !== null;
 
   return (
     <div className="rounded-xl border border-surface-border bg-surface-card p-5">
@@ -108,7 +122,7 @@ export default function ForecastChart({ forecast }: Props) {
       <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
         <div>
           <h3 className="font-mono text-lg font-bold text-white">{forecast.ticker}</h3>
-          <p className="text-xs text-slate-400">Prophet model forecast</p>
+          <p className="text-xs text-slate-400">Prophet model · 12-month forecast</p>
         </div>
 
         {/* Horizon toggle */}
@@ -129,10 +143,10 @@ export default function ForecastChart({ forecast }: Props) {
         </div>
       </div>
 
-      {/* Horizon summary cards */}
+      {/* Stats */}
       {horizonPoint && (
         <div className="mb-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
+          <div className={`grid gap-3 ${show12mCard ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
             <div className="rounded-lg bg-surface-dark p-3">
               <p className="text-xs text-slate-500">Current Price</p>
               <p className="mt-0.5 text-sm font-semibold text-white">
@@ -140,34 +154,58 @@ export default function ForecastChart({ forecast }: Props) {
               </p>
             </div>
             <div className="rounded-lg bg-surface-dark p-3">
-              <p className="text-xs text-slate-500">Prophet Forecast ({horizon})</p>
-              <p className={`mt-0.5 text-sm font-semibold ${
-                expectedReturn !== null && expectedReturn >= 0 ? "text-green-400" : "text-red-400"
-              }`}>
+              <p className="text-xs text-slate-500">Forecast ({horizon === "1y" ? "12m" : horizon})</p>
+              <p
+                className={`mt-0.5 text-sm font-semibold ${
+                  expectedReturn !== null && expectedReturn >= 0 ? "text-green-400" : "text-red-400"
+                }`}
+              >
                 {fmt(horizonPoint.yhat)}
               </p>
             </div>
             <div className="rounded-lg bg-surface-dark p-3">
               <p className="text-xs text-slate-500">Expected Return</p>
-              <p className={`mt-0.5 text-sm font-semibold ${
-                expectedReturn !== null && expectedReturn >= 0 ? "text-green-400" : "text-red-400"
-              }`}>
+              <p
+                className={`mt-0.5 text-sm font-semibold ${
+                  expectedReturn !== null && expectedReturn >= 0 ? "text-green-400" : "text-red-400"
+                }`}
+              >
                 {expectedReturn !== null ? fmtPct(expectedReturn) : "—"}
               </p>
             </div>
+
+            {/* 12-Month Target card — shown only on horizons shorter than 1y */}
+            {show12mCard && (
+              <div className="rounded-lg bg-surface-dark p-3 border border-indigo-500/25">
+                <p className="text-xs text-indigo-400">12-Month Target</p>
+                <p
+                  className={`mt-0.5 text-sm font-semibold ${
+                    target1yReturn >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
+                >
+                  {fmt(target1y.yhat)}
+                </p>
+                <p
+                  className={`text-xs font-medium ${
+                    target1yReturn >= 0 ? "text-green-400/70" : "text-red-400/70"
+                  }`}
+                >
+                  {fmtPct(target1yReturn)}
+                </p>
+              </div>
+            )}
           </div>
 
-          {/* Sentiment-adjusted 30d card — only shown on 30d horizon */}
+          {/* Sentiment-adjusted 30d card */}
           {horizon === "30d" && forecast.sentiment_adjusted_30d && (
             <div className="rounded-lg border border-surface-border bg-surface-dark p-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 min-w-0">
                 <SentimentDot score={forecast.sentiment_score ?? 0} />
                 <div className="min-w-0">
-                  <p className="text-xs text-slate-400 font-medium">
-                    Sentiment-adjusted 30d
-                  </p>
+                  <p className="text-xs text-slate-400 font-medium">Sentiment-adjusted 30d</p>
                   <p className="text-xs text-slate-500">
-                    VADER score {forecast.sentiment_score !== undefined
+                    VADER score{" "}
+                    {forecast.sentiment_score !== undefined
                       ? `${forecast.sentiment_score >= 0 ? "+" : ""}${forecast.sentiment_score.toFixed(3)}`
                       : "n/a"}{" "}
                     · ±5% max adjustment
@@ -175,20 +213,26 @@ export default function ForecastChart({ forecast }: Props) {
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <p className={`text-sm font-bold ${
-                  forecast.sentiment_adjusted_30d.yhat >= horizonPoint.yhat
-                    ? "text-green-400"
-                    : "text-red-400"
-                }`}>
+                <p
+                  className={`text-sm font-bold ${
+                    forecast.sentiment_adjusted_30d.yhat >= horizonPoint.yhat
+                      ? "text-green-400"
+                      : "text-red-400"
+                  }`}
+                >
                   {fmt(forecast.sentiment_adjusted_30d.yhat)}
                 </p>
                 {currentPrice && currentPrice > 0 && (
-                  <p className={`text-xs font-medium ${
-                    forecast.sentiment_adjusted_30d.yhat >= currentPrice
-                      ? "text-green-400/70"
-                      : "text-red-400/70"
-                  }`}>
-                    {fmtPct(((forecast.sentiment_adjusted_30d.yhat - currentPrice) / currentPrice) * 100)}
+                  <p
+                    className={`text-xs font-medium ${
+                      forecast.sentiment_adjusted_30d.yhat >= currentPrice
+                        ? "text-green-400/70"
+                        : "text-red-400/70"
+                    }`}
+                  >
+                    {fmtPct(
+                      ((forecast.sentiment_adjusted_30d.yhat - currentPrice) / currentPrice) * 100
+                    )}
                   </p>
                 )}
               </div>
@@ -237,17 +281,38 @@ export default function ForecastChart({ forecast }: Props) {
               }}
               formatter={(value: number, name: string) => [
                 fmt(value),
-                name === "actual" ? "Actual" :
-                name === "forecast" ? "Forecast" :
-                name === "upper" ? "Upper bound" : "Lower bound",
+                name === "actual"
+                  ? "Actual"
+                  : name === "forecast"
+                  ? "Forecast"
+                  : name === "upper"
+                  ? "Upper bound"
+                  : "Lower bound",
               ]}
             />
+            {/* Today marker */}
             {lastHistDate && (
               <ReferenceLine
                 x={lastHistDate}
                 stroke="rgba(255,255,255,0.2)"
                 strokeDasharray="4 4"
                 label={{ value: "Today", fill: "#94a3b8", fontSize: 10 }}
+              />
+            )}
+            {/* 12-month target price line — always visible so shorter horizons
+                show where the stock is expected to be in a year */}
+            {target1y && target1y.yhat > 0 && (
+              <ReferenceLine
+                y={target1y.yhat}
+                stroke="#6366f1"
+                strokeOpacity={0.5}
+                strokeDasharray="3 3"
+                label={{
+                  value: `12m ${fmt(target1y.yhat)}`,
+                  fill: "#6366f1",
+                  fontSize: 9,
+                  position: "insideBottomRight",
+                }}
               />
             )}
             {/* Confidence band */}
@@ -306,17 +371,14 @@ export default function ForecastChart({ forecast }: Props) {
 
 function SentimentDot({ score }: { score: number }) {
   const color =
-    score > 0.05
-      ? "bg-green-400"
-      : score < -0.05
-      ? "bg-red-400"
-      : "bg-yellow-400";
+    score > 0.05 ? "bg-green-400" : score < -0.05 ? "bg-red-400" : "bg-yellow-400";
   const title =
-    score > 0.05 ? "Positive sentiment" : score < -0.05 ? "Negative sentiment" : "Neutral sentiment";
+    score > 0.05
+      ? "Positive sentiment"
+      : score < -0.05
+      ? "Negative sentiment"
+      : "Neutral sentiment";
   return (
-    <span
-      className={`flex-shrink-0 h-2.5 w-2.5 rounded-full ${color}`}
-      title={title}
-    />
+    <span className={`flex-shrink-0 h-2.5 w-2.5 rounded-full ${color}`} title={title} />
   );
 }

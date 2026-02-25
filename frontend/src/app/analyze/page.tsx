@@ -199,7 +199,7 @@ function AnalyzePage() {
                 <SentimentTab portfolioId={portfolioId} finnhubKey={finnhubKey} />
               )}
               {activeTab === "forecast" && (
-                <ForecastTab portfolioId={portfolioId} />
+                <ForecastTab portfolioId={portfolioId} pnlSummary={pnlSummary} />
               )}
               {activeTab === "simulator" && (
                 <SimulatorTab
@@ -347,7 +347,15 @@ function SentimentTab({
   );
 }
 
-function ForecastTab({ portfolioId }: { portfolioId: string }) {
+function ForecastTab({
+  portfolioId,
+  pnlSummary,
+}: {
+  portfolioId: string;
+  pnlSummary?: PortfolioPositionSummary;
+}) {
+  const [view, setView] = useState<"combined" | "individual">("combined");
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["forecast", portfolioId],
     queryFn: () => getForecast(portfolioId),
@@ -366,18 +374,59 @@ function ForecastTab({ portfolioId }: { portfolioId: string }) {
     );
   }
 
+  const hasCombined = !!data.portfolio_forecast;
+  const costBasis = pnlSummary?.total_cost;
+
   return (
     <div className="space-y-4">
-      {/* Combined portfolio forecast (only when positions were provided) */}
-      {data.portfolio_forecast && (
-        <PortfolioForecastChart forecast={data.portfolio_forecast} />
+      {/* View toggle — only shown when a combined portfolio forecast exists */}
+      {hasCombined && (
+        <div className="flex items-center gap-1 rounded-lg bg-surface-dark p-1 w-fit">
+          <button
+            onClick={() => setView("combined")}
+            className={`rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${
+              view === "combined"
+                ? "bg-indigo-500 text-white"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Combined Portfolio
+          </button>
+          <button
+            onClick={() => setView("individual")}
+            className={`rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${
+              view === "individual"
+                ? "bg-brand-500 text-white"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Individual Stocks
+          </button>
+        </div>
       )}
 
-      {/* Individual ticker forecasts */}
-      {tickerEntries.map(([ticker, tickerForecast]) => {
-        if (!tickerForecast || tickerForecast.historical.length === 0) return null;
-        return <ForecastChart key={ticker} forecast={tickerForecast} />;
-      })}
+      {/* Combined 12-month portfolio forecast */}
+      {(view === "combined" || !hasCombined) && data.portfolio_forecast && (
+        <PortfolioForecastChart
+          forecast={data.portfolio_forecast}
+          costBasis={costBasis}
+        />
+      )}
+
+      {/* When combined view is active but no portfolio forecast exists, explain why */}
+      {view === "combined" && !hasCombined && (
+        <div className="rounded-xl border border-surface-border bg-surface-card p-8 text-center text-sm text-slate-500">
+          Enter shares and average buy price in the portfolio form to enable the combined
+          12-month projection.
+        </div>
+      )}
+
+      {/* Individual 12-month stock forecasts */}
+      {(view === "individual" || !hasCombined) &&
+        tickerEntries.map(([ticker, tickerForecast]) => {
+          if (!tickerForecast || tickerForecast.historical.length === 0) return null;
+          return <ForecastChart key={ticker} forecast={tickerForecast} />;
+        })}
     </div>
   );
 }
