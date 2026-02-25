@@ -94,7 +94,11 @@ def optimize_portfolio(
 
     w0 = np.ones(n) / n
     constraints = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
-    bounds = [(0.0, 1.0)] * n
+    # Cap single-asset weight to prevent degenerate 100% concentration.
+    # For n >= 4 tickers: max weight = min(40%, 2/n) → spreads allocation sensibly.
+    # For n < 4: allow up to 60% in one asset.
+    max_w = min(0.40, 2.0 / n) if n >= 4 else 0.60
+    bounds = [(0.0, max_w)] * n
 
     # ── Max Sharpe ──────────────────────────────────────────────────────────────
     def neg_sharpe(w):

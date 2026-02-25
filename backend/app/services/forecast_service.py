@@ -52,7 +52,7 @@ def _run_ticker_forecast(prices_series: pd.Series, ticker: str) -> dict:
             daily_seasonality=False,
             weekly_seasonality=True,
             yearly_seasonality=True,
-            changepoint_prior_scale=0.05,
+            changepoint_prior_scale=0.10,  # 0.05 was too rigid → mean-reverted trending stocks
             interval_width=0.80,
         )
         # Suppress Prophet's verbose output

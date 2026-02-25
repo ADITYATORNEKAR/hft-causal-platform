@@ -101,13 +101,15 @@ export default function ForecastChart({ forecast }: Props) {
       ? ((target1y.yhat - currentPrice) / currentPrice) * 100
       : null;
 
+  // Base y-axis on forecast/actual prices only — confidence bands (yhat_upper) can be
+  // very wide due to Prophet weekly seasonality, which would skew the axis to 2× price.
   const allPrices = chartData.flatMap((d) =>
-    [d.actual, d.forecast, d.lower, d.upper].filter((v): v is number => v !== null)
+    [d.actual, d.forecast].filter((v): v is number => v !== null)
   );
   // Extend domain to include the 12-month target price even on shorter horizons
   if (target1y?.yhat) allPrices.push(target1y.yhat);
-  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) * 0.97 : 0;
-  const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) * 1.03 : 100;
+  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) * 0.95 : 0;
+  const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) * 1.05 : 100;
 
   const tickFormatter = (date: string) => {
     const d = new Date(date);

@@ -234,44 +234,77 @@ def _rule_based_insights(
     if alpha > 0:
         findings.append(f"Portfolio generates positive alpha ({alpha:.2f}%) vs benchmark.")
 
-    # Forecast-based signals — compare vs cost basis
+    # Forecast-based signals — compare vs cost basis and optimal weights
     signals = []
     if forecast_summary:
-        positions = (pnl_summary or {}).get("positions", [])
+        positions_list = (pnl_summary or {}).get("positions", [])
         total_value = (pnl_summary or {}).get("total_value", 0)
         opt_weights = (
             (optimization_result or {}).get("max_sharpe", {}).get("weights", {})
         )
+        equal_w = 100.0 / max(len(forecast_summary), 1)
 
-        cost_map = {p["ticker"]: p for p in positions}
+        if positions_list:
+            # With holdings: compare weight drift vs optimal
+            cost_map = {p["ticker"]: p for p in positions_list}
+            for ticker, fc in forecast_summary.items():
+                ret = fc.get("expected_return_pct", 0)
+                price = fc.get("forecast_1y_price", 0)
+                pos = cost_map.get(ticker, {})
+                curr_value = pos.get("current_value", 0)
+                current_weight = (curr_value / total_value * 100) if total_value > 0 else 0
+                optimal_weight = opt_weights.get(ticker, equal_w)
+                drift = current_weight - optimal_weight
 
-        for ticker, fc in forecast_summary.items():
-            ret = fc.get("expected_return_pct", 0)
-            price = fc.get("forecast_1y_price", 0)
-            pos = cost_map.get(ticker, {})
-            curr_value = pos.get("current_value", 0)
-            current_weight = (curr_value / total_value * 100) if total_value > 0 else 0
-            optimal_weight = opt_weights.get(ticker, 0)
-            drift = current_weight - optimal_weight
+                if ret > 15 and drift < -3:
+                    signals.append(
+                        f"BUY {ticker}: 1y forecast +{ret:.1f}% to ${price:.2f} "
+                        f"and underweight by {abs(drift):.1f}% vs Max Sharpe"
+                    )
+                elif ret > 10:
+                    signals.append(
+                        f"HOLD/ADD {ticker}: 1y forecast +{ret:.1f}% to ${price:.2f}"
+                    )
+                elif ret < -5 or drift > 10:
+                    signals.append(
+                        f"TRIM {ticker}: 1y forecast {ret:.1f}%, "
+                        f"overweight by {max(drift, 0):.1f}% vs optimal"
+                    )
+                else:
+                    signals.append(
+                        f"HOLD {ticker}: 1y forecast {ret:+.1f}% to ${price:.2f}"
+                    )
+        else:
+            # No holdings: generate signals purely from forecast + optimal weights
+            for ticker, fc in sorted(
+                forecast_summary.items(),
+                key=lambda x: x[1].get("expected_return_pct", 0),
+                reverse=True,
+            ):
+                ret = fc.get("expected_return_pct", 0)
+                price = fc.get("forecast_1y_price", 0)
+                opt_w = opt_weights.get(ticker, equal_w)
 
-            if ret > 15 and drift < -3:
-                signals.append(
-                    f"BUY {ticker}: 1y forecast +{ret:.1f}% to ${price:.2f} "
-                    f"and underweight by {abs(drift):.1f}% vs Max Sharpe"
-                )
-            elif ret > 10:
-                signals.append(
-                    f"HOLD/ADD {ticker}: 1y forecast +{ret:.1f}% to ${price:.2f}"
-                )
-            elif ret < -5 or drift > 10:
-                signals.append(
-                    f"TRIM {ticker}: 1y forecast {ret:.1f}%, "
-                    f"overweight by {max(drift, 0):.1f}% vs optimal"
-                )
-            else:
-                signals.append(
-                    f"HOLD {ticker}: 1y forecast {ret:+.1f}% to ${price:.2f}"
-                )
+                if ret > 15:
+                    signals.append(
+                        f"BUY {ticker}: 1y forecast +{ret:.1f}% to ${price:.2f} "
+                        f"(Max Sharpe target {opt_w:.1f}%)"
+                    )
+                elif ret > 5:
+                    signals.append(
+                        f"HOLD/ADD {ticker}: 1y forecast +{ret:.1f}% to ${price:.2f} "
+                        f"(Max Sharpe target {opt_w:.1f}%)"
+                    )
+                elif ret < -5:
+                    signals.append(
+                        f"TRIM/AVOID {ticker}: 1y forecast {ret:.1f}% to ${price:.2f} "
+                        f"— negative outlook"
+                    )
+                else:
+                    signals.append(
+                        f"HOLD {ticker}: 1y forecast {ret:+.1f}% to ${price:.2f} "
+                        f"(Max Sharpe target {opt_w:.1f}%)"
+                    )
 
     # Sentiment signals
     if sentiment:
@@ -606,50 +639,86 @@ def _build_agent_graph():
 
         # Generate data-driven trade signals from positions × forecasts × optimal weights
         signals = []
-        for pos in positions:
-            ticker = pos.get("ticker", "?")
-            curr_val = pos.get("current_value", 0)
-            curr_w = (curr_val / total_value * 100) if total_value > 0 else 0
-            opt_w = max_sharpe_weights.get(ticker, 0)
-            drift = curr_w - opt_w
-            fc = forecast_summary.get(ticker) or {}
-            fc_ret = fc.get("expected_return_pct", 0)
-            fc_price = fc.get("forecast_1y_price", 0)
-            cost = pos.get("purchase_price", 0)
-            curr_price = pos.get("current_price", 0)
 
-            if fc_ret > 15 and drift < -3:
-                signals.append(
-                    f"BUY {ticker}: 1y forecast +{fc_ret:.1f}% to ${fc_price:.2f} "
-                    f"(from ${curr_price:.2f}) — underweight {abs(drift):.1f}% vs Max Sharpe"
-                )
-            elif fc_ret > 10:
-                signals.append(
-                    f"HOLD/ADD {ticker}: 1y forecast +{fc_ret:.1f}% to ${fc_price:.2f} "
-                    f"(cost basis ${cost:.2f})"
-                )
-            elif fc_ret < -5 and drift > 5:
-                signals.append(
-                    f"TRIM {ticker}: 1y forecast {fc_ret:.1f}% + "
-                    f"overweight {drift:.1f}% vs optimal — reduce exposure"
-                )
-            elif fc_ret < -5:
-                signals.append(
-                    f"MONITOR {ticker}: 1y forecast {fc_ret:.1f}% — "
-                    f"consider reducing if thesis doesn't hold"
-                )
-            elif drift > 10:
-                signals.append(
-                    f"REBALANCE {ticker}: overweight {drift:.1f}% vs optimal "
-                    f"— trim to target even with {fc_ret:+.1f}% forecast"
-                )
-            else:
-                signals.append(
-                    f"HOLD {ticker}: 1y forecast {fc_ret:+.1f}% to ${fc_price:.2f} "
-                    f"(cost ${cost:.2f}) — near-optimal weight"
-                )
+        if positions:
+            # Path A: user provided holdings — compare cost basis vs forecast vs optimal
+            for pos in positions:
+                ticker = pos.get("ticker", "?")
+                curr_val = pos.get("current_value", 0)
+                curr_w = (curr_val / total_value * 100) if total_value > 0 else 0
+                opt_w = max_sharpe_weights.get(ticker, 0)
+                drift = curr_w - opt_w
+                fc = forecast_summary.get(ticker) or {}
+                fc_ret = fc.get("expected_return_pct", 0)
+                fc_price = fc.get("forecast_1y_price", 0)
+                cost = pos.get("purchase_price", 0)
+                curr_price = pos.get("current_price", 0)
 
-        # Sentiment-driven signals
+                if fc_ret > 15 and drift < -3:
+                    signals.append(
+                        f"BUY {ticker}: 1y forecast +{fc_ret:.1f}% to ${fc_price:.2f} "
+                        f"(from ${curr_price:.2f}) — underweight {abs(drift):.1f}% vs Max Sharpe"
+                    )
+                elif fc_ret > 10:
+                    signals.append(
+                        f"HOLD/ADD {ticker}: 1y forecast +{fc_ret:.1f}% to ${fc_price:.2f} "
+                        f"(cost basis ${cost:.2f})"
+                    )
+                elif fc_ret < -5 and drift > 5:
+                    signals.append(
+                        f"TRIM {ticker}: 1y forecast {fc_ret:.1f}% + "
+                        f"overweight {drift:.1f}% vs optimal — reduce exposure"
+                    )
+                elif fc_ret < -5:
+                    signals.append(
+                        f"MONITOR {ticker}: 1y forecast {fc_ret:.1f}% — "
+                        f"consider reducing if thesis doesn't hold"
+                    )
+                elif drift > 10:
+                    signals.append(
+                        f"REBALANCE {ticker}: overweight {drift:.1f}% vs optimal "
+                        f"— trim to target even with {fc_ret:+.1f}% forecast"
+                    )
+                else:
+                    signals.append(
+                        f"HOLD {ticker}: 1y forecast {fc_ret:+.1f}% to ${fc_price:.2f} "
+                        f"(cost ${cost:.2f}) — near-optimal weight"
+                    )
+        elif forecast_summary:
+            # Path B: no holdings data — generate signals purely from forecast + optimal weights
+            equal_w = 100.0 / max(len(forecast_summary), 1)
+            for ticker, fc in sorted(
+                forecast_summary.items(),
+                key=lambda x: x[1].get("expected_return_pct", 0),
+                reverse=True,
+            ):
+                fc_ret = fc.get("expected_return_pct", 0)
+                fc_price = fc.get("forecast_1y_price", 0)
+                curr_price = fc.get("current_price", fc_price)
+                opt_w = max_sharpe_weights.get(ticker, equal_w)
+
+                if fc_ret > 15:
+                    signals.append(
+                        f"BUY {ticker}: 1y forecast +{fc_ret:.1f}% to ${fc_price:.2f} "
+                        f"(Max Sharpe target {opt_w:.1f}%)"
+                    )
+                elif fc_ret > 5:
+                    signals.append(
+                        f"HOLD/ADD {ticker}: 1y forecast +{fc_ret:.1f}% to ${fc_price:.2f} "
+                        f"(Max Sharpe target {opt_w:.1f}%)"
+                    )
+                elif fc_ret < -5:
+                    signals.append(
+                        f"TRIM/AVOID {ticker}: 1y forecast {fc_ret:.1f}% to ${fc_price:.2f} "
+                        f"— negative outlook, consider underweighting"
+                    )
+                else:
+                    signals.append(
+                        f"HOLD {ticker}: 1y forecast {fc_ret:+.1f}% to ${fc_price:.2f} "
+                        f"(Max Sharpe target {opt_w:.1f}%)"
+                    )
+
+        # Sentiment overlay — only flag strong signals to avoid noise
         for ticker, s in sent.items():
             label = s.get("overall_label", "neutral")
             score = s.get("overall_score", 0)
