@@ -18,10 +18,10 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        <title>HFT Causal Platform</title>
+        <title>PortfolioIQ</title>
         <meta
           name="description"
-          content="Discover causal relationships in your stock portfolio using rigorous causal inference and AI agents."
+          content="AI-powered portfolio intelligence — causal inference, 12-month forecasting, portfolio optimization, and multi-agent insights."
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -37,8 +37,8 @@ export default function RootLayout({
                   className="flex items-center gap-2 font-semibold text-white hover:text-brand-500 transition-colors"
                 >
                   <BarChart2 className="h-5 w-5 text-brand-500" />
-                  <span className="hidden sm:inline">HFT Causal Platform</span>
-                  <span className="sm:hidden">HFT Causal</span>
+                  <span className="hidden sm:inline">PortfolioIQ</span>
+                  <span className="sm:hidden">PortfolioIQ</span>
                 </Link>
                 <div className="flex items-center gap-4">
                   <Link
@@ -67,7 +67,7 @@ export default function RootLayout({
           <footer className="mt-24 border-t border-surface-border py-8">
             <div className="mx-auto max-w-7xl px-4 text-center text-sm text-slate-500">
               <p>
-                HFT Causal Platform — 100% free stack. Built by{" "}
+                PortfolioIQ — 100% free stack. Built by{" "}
                 <a
                   href="https://github.com/ADITYATORNEKAR"
                   className="text-brand-500 hover:underline"
@@ -80,7 +80,7 @@ export default function RootLayout({
               </p>
               <p className="mt-1 text-xs">
                 Data: yfinance · Causal: PC Algorithm + Double ML · AI: Groq
-                Llama-3.3-70B · Deploy: Fly.io + Vercel
+                Llama-3.3-70B · Deploy: Render + Vercel
               </p>
             </div>
           </footer>

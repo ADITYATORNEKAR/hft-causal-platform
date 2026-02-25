@@ -19,6 +19,7 @@ Falls back to deterministic rule-based insights if no GROQ_API_KEY is set.
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta
 from typing import Annotated, Optional, TypedDict
 
@@ -732,10 +733,28 @@ def _build_agent_graph():
                     f"— review position sizing"
                 )
 
-        # Key findings from agent narratives
-        analyst_sentences = [s.strip() for s in analyst_text.split(".") if len(s.strip()) > 30][:3]
-        risk_sentences = [s.strip() for s in risk_text.split(".") if len(s.strip()) > 30][:2]
-        findings = [f"{s}." for s in analyst_sentences + risk_sentences if s]
+        # Key findings from agent narratives.
+        # Prefer newline-separated items (LLMs put each idea on its own line);
+        # fall back to sentence splitting only when the text is a single long paragraph.
+        def _llm_to_findings(text: str, n: int) -> list[str]:
+            if not text:
+                return []
+            lines = [l.strip() for l in text.splitlines() if len(l.strip()) > 30]
+            # Skip LLM preamble lines ("Based on...", "Here are...", etc.)
+            preamble = {"based on", "here are", "concise answer", "provided data"}
+            lines = [l for l in lines if not any(l.lower().startswith(kw) for kw in preamble)]
+            if len(lines) >= 2:
+                return lines[:n]
+            # Fall back: split on numbered list markers "1." "2." across a single blob
+            parts = [p.strip() for p in re.split(r"(?m)^\s*\d+[.)]\s*", text) if len(p.strip()) > 30]
+            if len(parts) >= 2:
+                return [p.splitlines()[0].strip() for p in parts[:n]]
+            # Last resort: sentence split
+            return [f"{s.strip()}." for s in text.split(".") if len(s.strip()) > 30][:n]
+
+        analyst_findings = _llm_to_findings(analyst_text, 3)
+        risk_findings = _llm_to_findings(risk_text, 2)
+        findings = (analyst_findings + risk_findings)[:5]
 
         narrative = (
             f"{analyst_text}\n\n"

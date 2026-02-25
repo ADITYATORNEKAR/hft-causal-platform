@@ -1,60 +1,78 @@
-# Frontend Documentation for High-Frequency Trading Platform
+# PortfolioIQ — Frontend
 
-## Overview
+Next.js 14 frontend for PortfolioIQ, an AI-powered portfolio intelligence platform.
 
-This frontend is built using Next.js, Tailwind CSS, and shadcn/ui. It serves as the user interface for the high-frequency trading, causal inference, and multi-agent platform.
+## Tech Stack
+
+| Layer | Tool |
+|-------|------|
+| Framework | Next.js 14 (App Router) |
+| Styling | Tailwind CSS |
+| Charts | Recharts (area, line, bar) |
+| Causal graph | D3.js (force-directed DAG) |
+| State / data fetching | TanStack Query (React Query) |
+| Icons | Lucide React |
+| Language | TypeScript |
 
 ## Setup
 
-To get started with the frontend, follow these steps:
+```bash
+npm install
+cp .env.example .env.local
+# Set NEXT_PUBLIC_API_URL=http://localhost:8000 for local dev
+npm run dev
+# → http://localhost:3000
+```
 
-1. **Clone the Repository**
-   ```bash
-   git clone <repository-url>
-   cd high-frequency-trading-platform/frontend
-   ```
+## Key Components
 
-2. **Install Dependencies**
-   Make sure you have Node.js installed. Then run:
-   ```bash
-   npm install
-   ```
-
-3. **Run the Development Server**
-   Start the Next.js development server:
-   ```bash
-   npm run dev
-   ```
-   The application will be available at `http://localhost:3000`.
+| Component | Description |
+|-----------|-------------|
+| `PortfolioForm` | Stock search with autocomplete, manual holdings entry, and CSV drag-and-drop upload |
+| `ForecastChart` | FB Prophet 12-month forecast per ticker with 30d/60d/90d/6m/1y horizon toggle, sentiment-adjusted 30d card |
+| `PortfolioForecastChart` | Combined portfolio-level dollar forecast weighted by holdings |
+| `AgentInsights` | LangGraph AI agent output — key findings, risk assessment, BUY/HOLD/TRIM signals |
+| `CausalGraph` | Interactive D3 force-directed graph of causal relationships |
+| `BacktestChart` | Cumulative returns vs SPY, performance metrics table |
+| `SentimentPanel` | VADER sentiment scores per ticker with article headlines |
+| `OptimizerPanel` | Max Sharpe / Min Volatility / Equal Weight allocation cards |
+| `LivePriceCard` | WebSocket real-time price with change % and signal indicator |
 
 ## Directory Structure
 
-- `public/`: Contains static assets such as images and fonts.
-- `src/components/`: Reusable React components.
-- `src/pages/`: Next.js pages for routing.
-- `src/styles/`: Global styles and Tailwind CSS configurations.
-- `src/utils/`: Utility functions and helpers.
+```
+src/
+  app/
+    layout.tsx          # Nav, footer, QueryClientProvider
+    page.tsx            # Landing page
+    analyze/page.tsx    # Main analysis page
+  components/           # All UI components (see above)
+  lib/
+    api.ts              # API client (fetch wrappers)
+    types.ts            # TypeScript interfaces matching backend schemas
+  styles/
+    globals.css         # Tailwind base + custom dark theme tokens
+```
 
-## Tailwind CSS Configuration
+## CSV Upload Format
 
-The `tailwind.config.js` file is configured to include paths to all template files. Customize the theme as needed.
+The portfolio form accepts CSV files with the following columns:
 
-## Next.js Configuration
+```csv
+ticker,quantity,purchase_price
+AAPL,10,150.00
+MSFT,5,320.00
+NVDA,8,220.00
+```
 
-The `next.config.js` file contains settings for the Next.js application, including any necessary plugins.
+Column aliases supported:
+- Ticker: `ticker` / `symbol` / `stock`
+- Quantity: `quantity` / `qty` / `shares` / `units`
+- Price: `purchase_price` / `avg_price` / `price` / `cost` / `cost_basis`
 
 ## Deployment
 
-For deployment, you can use Vercel or any other hosting service that supports Next.js applications. Ensure to follow the specific deployment instructions provided by the service.
-
-## Integration with AG-UI Protocol
-
-This frontend is designed to integrate seamlessly with the AG-UI protocol, enabling efficient communication with the backend services.
-
-## Contributing
-
-If you would like to contribute to this project, please fork the repository and submit a pull request with your changes.
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for more details.
+```bash
+npx vercel --prod
+# Set NEXT_PUBLIC_API_URL to the Render backend URL in Vercel project settings
+```

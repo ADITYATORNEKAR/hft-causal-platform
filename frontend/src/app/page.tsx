@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, GitBranch, BarChart2, Brain, Zap } from "lucide-react";
+import { ArrowRight, GitBranch, BarChart2, Brain, Zap, TrendingUp, PieChart } from "lucide-react";
 
 const EXAMPLE_PORTFOLIOS = [
   { label: "Big Tech", tickers: "AAPL,MSFT,GOOGL,NVDA,META" },
@@ -16,6 +16,20 @@ const FEATURES = [
     tag: "causal-learn + econml",
   },
   {
+    icon: TrendingUp,
+    title: "12-Month Forecasting",
+    description:
+      "FB Prophet model fits per-ticker price forecasts with 80% confidence intervals across 30d, 60d, 90d, 6m, and 1-year horizons.",
+    tag: "FB Prophet · sentiment-adjusted",
+  },
+  {
+    icon: PieChart,
+    title: "Portfolio Optimizer",
+    description:
+      "Mean-variance optimization (Max Sharpe, Min Volatility, Equal Weight) using Prophet forecast returns and historical covariance.",
+    tag: "scipy SLSQP",
+  },
+  {
     icon: BarChart2,
     title: "Portfolio Backtesting",
     description:
@@ -26,14 +40,14 @@ const FEATURES = [
     icon: Brain,
     title: "AI Agent Insights",
     description:
-      "LangGraph multi-agent system (Groq Llama-3.3-70b) interprets causal structure and synthesises risk narrative.",
-    tag: "LangGraph + Groq (free)",
+      "LangGraph 4-node pipeline (Groq Llama-3.3-70b) fetches live Finnhub news and FRED macro data to generate prescriptive BUY/HOLD/TRIM signals.",
+    tag: "LangGraph + Groq + Finnhub + FRED",
   },
   {
     icon: Zap,
-    title: "Live Prices",
+    title: "Live Prices & CSV Upload",
     description:
-      "WebSocket streaming with real-time price updates, change percentage, and sentiment signals.",
+      "WebSocket real-time prices with sentiment signals. Upload your portfolio via CSV (ticker, quantity, purchase_price) or enter manually.",
     tag: "Finnhub free tier",
   },
 ];
@@ -49,14 +63,14 @@ export default function LandingPage() {
         </div>
 
         <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-6xl">
-          Does AAPL{" "}
-          <span className="text-brand-500">cause</span>{" "}
-          MSFT to move?
+          Smarter decisions,{" "}
+          <span className="text-brand-500">not just</span>{" "}
+          correlations.
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-slate-400">
-          Enter your stock portfolio and discover genuine causal relationships —
-          not just correlations. Powered by rigorous causal inference, AI agents,
-          and backtesting. Zero cost, always.
+          Enter your portfolio and get 12-month forecasts, causal relationships,
+          portfolio optimization, and prescriptive AI insights — all powered by
+          a 100% free stack.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row gap-4">
@@ -129,9 +143,9 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
               { label: "Historical Data", value: "yfinance", note: "No API key" },
-              { label: "Causal Engine", value: "causal-learn", note: "Open source" },
+              { label: "Forecasting", value: "FB Prophet", note: "Open source" },
               { label: "AI Agents", value: "Groq Llama-3.3", note: "Free tier" },
-              { label: "Deployment", value: "Fly.io + Vercel", note: "Always-on free" },
+              { label: "Deployment", value: "Render + Vercel", note: "Always-on free" },
             ].map((item) => (
               <div key={item.label} className="text-center">
                 <p className="text-xs text-slate-500 uppercase tracking-wide">{item.label}</p>

@@ -16,7 +16,7 @@ def test_root(client):
     assert resp.status_code == 200
     data = resp.json()
     assert "name" in data
-    assert data["name"] == "HFT Causal Platform"
+    assert data["name"] == "PortfolioIQ"
 
 
 def test_health(client):

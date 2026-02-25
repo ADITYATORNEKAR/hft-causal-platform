@@ -1,66 +1,87 @@
-# High-Frequency Trading Platform Backend
+# PortfolioIQ — Backend
 
-This directory contains the backend implementation of the high-frequency trading platform, built using FastAPI. The backend is responsible for handling API requests, processing data, and serving the frontend application.
+FastAPI backend for PortfolioIQ, an AI-powered portfolio intelligence platform.
 
-## Directory Structure
+## Tech Stack
 
-- **app/api**: Contains FastAPI route definitions for the backend API.
-- **app/models**: Holds data models and schemas used in the FastAPI application.
-- **app/services**: Includes service classes for business logic and data processing.
-- **app/main.py**: The entry point for the FastAPI application, setting up the app instance and including routes.
+| Layer | Tool |
+|-------|------|
+| API framework | FastAPI + Uvicorn |
+| Causal discovery | causal-learn (PC algorithm) |
+| Treatment effects | EconML (Double ML) |
+| Price forecasting | FB Prophet |
+| Portfolio optimization | scipy SLSQP (mean-variance) |
+| AI agents | LangGraph + Groq Llama-3.3-70b |
+| Sentiment analysis | VADER (nltk) |
+| Data | yfinance, Finnhub REST, FRED REST |
+| Cache / DB | SQLite (zero-config) |
+| Language | Python 3.9+ |
 
 ## Setup
 
-To set up the backend, follow these steps:
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd high-frequency-trading-platform/backend
-   ```
-
-2. **Create a virtual environment** (optional but recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run the application**:
-   ```bash
-   uvicorn app.main:app --reload
-   ```
-
-## API Documentation
-
-The API documentation can be accessed at `http://localhost:8000/docs` once the application is running. This provides an interactive interface to explore the available endpoints.
-
-## Testing
-
-To run tests, ensure you have the necessary testing libraries installed and execute the test suite.
-
-## Deployment
-
-For deployment, you can use the provided Dockerfile to build a Docker image. Use the following command:
-
 ```bash
-docker build -t high-frequency-trading-backend .
+pip install -r requirements.txt
+cp .env.example .env   # add optional free API keys
+
+cd backend
+uvicorn app.main:app --reload --port 8000
+# API docs → http://localhost:8000/docs
 ```
 
-Then run the container:
+## Environment Variables
 
-```bash
-docker run -d -p 8000:8000 high-frequency-trading-backend
+```env
+GROQ_API_KEY=      # Groq console.groq.com — free, 500 req/day
+FINNHUB_API_KEY=   # finnhub.io — free, 60 calls/min
+FRED_API_KEY=      # fred.stlouisfed.org — free, unlimited
 ```
 
-## Contributing
+All keys are optional — the app falls back to rule-based insights and omits external data fetches.
 
-Contributions are welcome! Please open an issue or submit a pull request for any enhancements or bug fixes.
+## API Endpoints
 
-## License
+```
+POST /api/v1/portfolio/analyze
+     Body: {tickers, period, benchmark, positions?, finnhub_api_key?, groq_api_key?}
+     → Full analysis: causal graph, forecasts, backtest, optimizer, sentiment, AI insights
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+GET  /api/v1/portfolio/{id}/causal-graph   → PC algorithm DAG + Double ML edge strengths
+GET  /api/v1/portfolio/{id}/backtest       → Sharpe, Sortino, Calmar, MDD, Alpha, Beta vs SPY
+GET  /api/v1/portfolio/{id}/sentiment      → VADER scores per ticker + article headlines
+GET  /api/v1/portfolio/{id}/insights       → LangGraph AI agent output (key findings, signals)
+GET  /api/v1/portfolio/{id}/optimize       → Max Sharpe / Min Volatility / Equal Weight weights
+
+WS   /api/v1/live/prices?tickers=AAPL,MSFT  → Real-time Finnhub price stream
+```
+
+## Service Architecture
+
+```
+app/services/
+  forecast_service.py    — FB Prophet per-ticker 12-month forecasts; lag-aware window extension
+  optimizer_service.py   — Mean-variance optimization; covariance matrix from daily returns
+  agent_service.py       — LangGraph 4-node pipeline:
+                             researcher → analyst → risk → synthesizer
+                           Finnhub news + FRED macro tools; rule-based fallback
+  causal_service.py      — PC algorithm causal discovery + Double ML treatment effects
+  backtest_service.py    — Historical backtest vs benchmark
+  sentiment_service.py   — VADER sentiment on news headlines; 30d forecast adjustment
+```
+
+## Tests
+
+```bash
+cd backend
+PYTHONPATH=. pytest tests/test_causal_service.py -v   # unit tests, no network
+PYTHONPATH=. pytest tests/test_api.py -v -k "not analyze"
+```
+
+## Deployment → Render (free)
+
+1. Sign up at [render.com](https://render.com)
+2. **New → Web Service** → connect the GitHub repo
+3. Render reads `render.yaml` automatically
+4. Set environment variables in the Render dashboard
+5. Deploy
+
+> The free Render tier spins down after inactivity. Use [UptimeRobot](https://uptimerobot.com) to ping `/api/v1/health` every 5 minutes.

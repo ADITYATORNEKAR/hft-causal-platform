@@ -89,8 +89,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="HFT Causal Platform API",
-    description="Causal inference & multi-agent portfolio analytics — 100% free stack",
+    title="PortfolioIQ API",
+    description="AI-powered portfolio intelligence — causal inference, Prophet forecasting, portfolio optimization, and multi-agent insights",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -109,7 +109,7 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/", tags=["root"])
 def read_root():
     return {
-        "name": "HFT Causal Platform",
+        "name": "PortfolioIQ",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/api/v1/health",
