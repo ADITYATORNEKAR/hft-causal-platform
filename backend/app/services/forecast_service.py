@@ -62,19 +62,27 @@ def _run_ticker_forecast(prices_series: pd.Series, ticker: str) -> dict:
 
         model.fit(df)
 
-        # Forecast 365 calendar days into the future
-        future = model.make_future_dataframe(periods=365)
-        forecast = model.predict(future)
-
         last_date = df["ds"].max()
         today = pd.Timestamp.now().normalize()
 
+        # Extend forecast window far enough to always cover today + 400 days,
+        # regardless of how stale the training data is (yfinance often lags 1-3 days).
+        # Without this, _point_at_horizon(365) can land beyond the forecast window
+        # and the fallback would incorrectly return the last-training-date price.
+        lag_days = max(0, (today - last_date).days)
+        forecast_periods = lag_days + 400  # covers all horizons up to 1 year from today
+        future = model.make_future_dataframe(periods=forecast_periods)
+        forecast = model.predict(future)
+
         def _point_at_horizon(days: int) -> dict:
             target = today + timedelta(days=days)
-            # Find closest future row
+            # Find the first forecast row on or after the target date
             future_rows = forecast[forecast["ds"] >= target]
             if future_rows.empty:
-                future_rows = forecast[forecast["ds"] >= last_date]
+                # Target is beyond the window — use the last available forecast point
+                future_rows = forecast[forecast["ds"] > today]
+                if future_rows.empty:
+                    future_rows = forecast.tail(1)
             row = future_rows.iloc[0]
             return {
                 "date": row["ds"].strftime("%Y-%m-%d"),
