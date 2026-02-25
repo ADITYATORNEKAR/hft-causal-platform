@@ -1,11 +1,13 @@
 """
 Portfolio API Routes
 
-POST /api/v1/portfolio/analyze         → run full analysis, store in SQLite
+POST /api/v1/portfolio/analyze              → run full analysis, store in SQLite
+GET  /api/v1/portfolio/search?q=Microsoft  → ticker search via Finnhub
 GET  /api/v1/portfolio/{id}/causal-graph
 GET  /api/v1/portfolio/{id}/backtest
 GET  /api/v1/portfolio/{id}/sentiment
 GET  /api/v1/portfolio/{id}/insights
+GET  /api/v1/portfolio/{id}/forecast
 """
 
 import hashlib
@@ -16,20 +18,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import (
     AgentInsights,
     BacktestResult,
     CausalGraph,
+    ForecastResult,
+    PortfolioPositionSummary,
     PortfolioRequest,
     PortfolioResponse,
     SentimentResult,
+    TickerPnL,
+    TickerSearchResult,
 )
 from app.services.agent_service import generate_insights
 from app.services.backtest_service import run_backtest
 from app.services.causal_service import run_full_causal_pipeline
-from app.services.data_service import fetch_portfolio_data
+from app.services.data_service import fetch_portfolio_data, search_ticker
+from app.services.forecast_service import build_forecast_summary, run_portfolio_forecast
 from app.services.sentiment_service import fetch_portfolio_sentiment
 
 router = APIRouter()
@@ -45,6 +52,17 @@ def _portfolio_id(tickers: list[str], period: str, benchmark: str) -> str:
     return hashlib.md5(key.encode()).hexdigest()[:12]
 
 
+# ── Ticker Search ─────────────────────────────────────────────────────────────
+
+@router.get("/search", response_model=list[TickerSearchResult])
+async def search_tickers(q: str, finnhub_api_key: Optional[str] = None):
+    """Search for tickers by company name (e.g. 'Microsoft' → MSFT)."""
+    if not q or len(q.strip()) < 2:
+        return []
+    results = await search_ticker(q.strip(), finnhub_api_key)
+    return results
+
+
 # ── Full Analysis ─────────────────────────────────────────────────────────────
 
 @router.post("/analyze", response_model=PortfolioResponse)
@@ -52,10 +70,11 @@ async def analyze_portfolio(req: PortfolioRequest):
     """
     Kick off a full portfolio analysis:
       1. Fetch historical data (yfinance — free)
-      2. Causal discovery (PC algorithm)
+      2. Causal discovery (PC algorithm, α=0.1 + correlation matrix)
       3. Backtest (equal-weight vs benchmark)
       4. Sentiment (Finnhub/RSS + VADER)
-      5. AI insights (Groq Llama-3.3-70b, if key provided)
+      5. Prophet forecasting (per-ticker, 365 days)
+      6. AI insights (Groq Llama-3.3-70b, if key provided)
 
     All results are cached in SQLite for fast subsequent reads.
     """
@@ -79,11 +98,52 @@ async def analyze_portfolio(req: PortfolioRequest):
             detail=f"No valid ticker data found. Check symbols: {req.tickers}",
         )
 
+    # --- Compute P&L if positions provided ---
+    pnl_summary = None
+    pnl_summary_dict = None
+    if req.positions:
+        positions_list = []
+        total_cost = 0.0
+        total_value = 0.0
+        for pos in req.positions:
+            ticker = pos.ticker.upper()
+            if ticker not in prices.columns:
+                continue
+            current_price = float(prices[ticker].dropna().iloc[-1])
+            total_cost_pos = pos.quantity * pos.purchase_price
+            current_value_pos = pos.quantity * current_price
+            pnl = current_value_pos - total_cost_pos
+            pnl_pct = (pnl / total_cost_pos) * 100 if total_cost_pos > 0 else 0.0
+            positions_list.append(TickerPnL(
+                ticker=ticker,
+                quantity=pos.quantity,
+                purchase_price=round(pos.purchase_price, 2),
+                current_price=round(current_price, 2),
+                total_cost=round(total_cost_pos, 2),
+                current_value=round(current_value_pos, 2),
+                pnl=round(pnl, 2),
+                pnl_pct=round(pnl_pct, 2),
+            ))
+            total_cost += total_cost_pos
+            total_value += current_value_pos
+
+        if positions_list:
+            total_pnl = total_value - total_cost
+            total_pnl_pct = (total_pnl / total_cost) * 100 if total_cost > 0 else 0.0
+            pnl_summary = PortfolioPositionSummary(
+                positions=positions_list,
+                total_cost=round(total_cost, 2),
+                total_value=round(total_value, 2),
+                total_pnl=round(total_pnl, 2),
+                total_pnl_pct=round(total_pnl_pct, 2),
+            )
+            pnl_summary_dict = pnl_summary.model_dump()
+
     # --- Causal discovery ---
     try:
         causal_graph = run_full_causal_pipeline(returns[available_tickers].dropna())
     except Exception as e:
-        causal_graph = {"nodes": [], "edges": [], "error": str(e)}
+        causal_graph = {"nodes": [], "edges": [], "correlation_matrix": {}, "error": str(e)}
 
     # --- Backtest ---
     try:
@@ -99,12 +159,22 @@ async def analyze_portfolio(req: PortfolioRequest):
     except Exception as e:
         sentiment = {"ticker_sentiment": {}, "error": str(e)}
 
+    # --- Prophet Forecasting ---
+    try:
+        ticker_forecasts = await run_portfolio_forecast(prices, available_tickers)
+        forecast_summary = build_forecast_summary(ticker_forecasts)
+    except Exception as e:
+        ticker_forecasts = {}
+        forecast_summary = {}
+
     # --- AI Insights ---
     try:
         insights = await generate_insights(
             causal_graph=causal_graph,
             backtest_metrics=backtest.get("metrics", {}),
             sentiment=sentiment,
+            pnl_summary=pnl_summary_dict,
+            forecast_summary=forecast_summary,
             groq_api_key=req.groq_api_key,
         )
     except Exception as e:
@@ -128,6 +198,17 @@ async def analyze_portfolio(req: PortfolioRequest):
                 now,
             ),
         )
+        # Store enriched causal data (with correlation matrix)
+        cur.execute(
+            "INSERT OR REPLACE INTO causal_graphs_v2 VALUES (?,?,?,?,?)",
+            (
+                portfolio_id,
+                json.dumps(causal_graph.get("nodes", [])),
+                json.dumps(causal_graph.get("edges", [])),
+                json.dumps(causal_graph.get("correlation_matrix", {})),
+                now,
+            ),
+        )
         cur.execute(
             "INSERT OR REPLACE INTO backtest_results VALUES (?,?,?,?)",
             (
@@ -140,6 +221,11 @@ async def analyze_portfolio(req: PortfolioRequest):
         cur.execute(
             "INSERT OR REPLACE INTO agent_insights VALUES (?,?,?)",
             (portfolio_id, json.dumps(insights), now),
+        )
+        # Cache forecasts
+        cur.execute(
+            "INSERT OR REPLACE INTO forecasts VALUES (?,?,?)",
+            (portfolio_id, json.dumps(ticker_forecasts), now),
         )
         conn.commit()
     finally:
@@ -177,6 +263,7 @@ async def analyze_portfolio(req: PortfolioRequest):
             "portfolio_total_return": port_metrics.get("total_return", 0),
             "benchmark_total_return": port_metrics.get("benchmark_total_return", 0),
         },
+        pnl_summary=pnl_summary,
     )
 
 
@@ -187,18 +274,28 @@ def get_causal_graph(portfolio_id: str):
     conn = _get_db()
     try:
         cur = conn.cursor()
+        # Try v2 table first (has correlation matrix)
         row = cur.execute(
-            "SELECT nodes_json, edges_json FROM causal_graphs WHERE portfolio_id = ?",
+            "SELECT nodes_json, edges_json, correlation_json FROM causal_graphs_v2 WHERE portfolio_id = ?",
             (portfolio_id,),
         ).fetchone()
+        if not row:
+            # Fall back to original table
+            row2 = cur.execute(
+                "SELECT nodes_json, edges_json FROM causal_graphs WHERE portfolio_id = ?",
+                (portfolio_id,),
+            ).fetchone()
+            if not row2:
+                raise HTTPException(status_code=404, detail="Portfolio not found. Run /analyze first.")
+            nodes = json.loads(row2[0])
+            edges = json.loads(row2[1])
+            correlation_matrix = None
+        else:
+            nodes = json.loads(row[0])
+            edges = json.loads(row[1])
+            correlation_matrix = json.loads(row[2]) if row[2] else None
     finally:
         conn.close()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Portfolio not found. Run /analyze first.")
-
-    nodes = json.loads(row[0])
-    edges = json.loads(row[1])
 
     message = (
         "No causal links detected — assets move independently (good diversification)."
@@ -211,6 +308,7 @@ def get_causal_graph(portfolio_id: str):
         nodes=nodes,
         edges=edges,
         message=message,
+        correlation_matrix=correlation_matrix,
     )
 
 
@@ -278,3 +376,25 @@ def get_insights(portfolio_id: str):
 
     data = json.loads(row[0])
     return AgentInsights(portfolio_id=portfolio_id, **data)
+
+
+@router.get("/{portfolio_id}/forecast", response_model=ForecastResult)
+def get_forecast(portfolio_id: str):
+    """Return Prophet forecasts for all tickers in the portfolio."""
+    conn = _get_db()
+    try:
+        row = conn.execute(
+            "SELECT forecast_json FROM forecasts WHERE portfolio_id = ?",
+            (portfolio_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Portfolio not found. Run /analyze first.")
+
+    ticker_forecasts = json.loads(row[0])
+    return ForecastResult(
+        portfolio_id=portfolio_id,
+        ticker_forecasts=ticker_forecasts,
+    )

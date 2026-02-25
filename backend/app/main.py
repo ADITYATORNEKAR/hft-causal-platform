@@ -51,6 +51,22 @@ def init_db() -> None:
             computed_at REAL NOT NULL,
             FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
         );
+
+        CREATE TABLE IF NOT EXISTS forecasts (
+            portfolio_id TEXT PRIMARY KEY,
+            forecast_json TEXT NOT NULL,
+            computed_at REAL NOT NULL,
+            FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS causal_graphs_v2 (
+            portfolio_id TEXT PRIMARY KEY,
+            nodes_json TEXT NOT NULL,
+            edges_json TEXT NOT NULL,
+            correlation_json TEXT NOT NULL,
+            computed_at REAL NOT NULL,
+            FOREIGN KEY (portfolio_id) REFERENCES portfolios(id)
+        );
     """)
     conn.commit()
     conn.close()

@@ -275,6 +275,132 @@ export default function CausalGraph({ data }: Props) {
           </span>
         )}
       </div>
+
+      {/* Correlation Heatmap */}
+      {data.correlation_matrix && Object.keys(data.correlation_matrix).length > 0 && (
+        <CorrelationHeatmap matrix={data.correlation_matrix} />
+      )}
+    </div>
+  );
+}
+
+function CorrelationHeatmap({
+  matrix,
+}: {
+  matrix: Record<string, Record<string, number>>;
+}) {
+  const tickers = Object.keys(matrix);
+  const [hoveredCell, setHoveredCell] = useState<{ row: string; col: string; val: number } | null>(null);
+
+  function corrColor(val: number): string {
+    // Red (−1) → White (0) → Green (+1)
+    const abs = Math.abs(val);
+    if (val > 0) {
+      const g = Math.round(180 + abs * 75);
+      const rb = Math.round(255 - abs * 200);
+      return `rgb(${rb},${g},${rb})`;
+    } else {
+      const r = Math.round(180 + abs * 75);
+      const gb = Math.round(255 - abs * 200);
+      return `rgb(${r},${gb},${gb})`;
+    }
+  }
+
+  return (
+    <div className="mt-6 border-t border-surface-border pt-5">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-white">Pearson Correlation Matrix</h4>
+          <p className="text-xs text-slate-500">
+            How closely each pair of assets moves together (−1 = inverse, +1 = identical)
+          </p>
+        </div>
+        <div className="flex gap-2 text-xs text-slate-500 items-center">
+          <span className="inline-block h-3 w-6 rounded" style={{ background: "rgb(55,180,55)" }} /> +1
+          <span className="inline-block h-3 w-6 rounded bg-white" /> 0
+          <span className="inline-block h-3 w-6 rounded" style={{ background: "rgb(180,55,55)" }} /> −1
+        </div>
+      </div>
+
+      <div className="overflow-auto">
+        <table className="min-w-full border-collapse text-xs">
+          <thead>
+            <tr>
+              <th className="w-16" />
+              {tickers.map((col) => (
+                <th
+                  key={col}
+                  className="px-2 py-1 font-mono text-slate-400 text-center font-medium"
+                >
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {tickers.map((row) => (
+              <tr key={row}>
+                <td className="pr-2 py-0.5 font-mono text-slate-400 font-medium text-right whitespace-nowrap">
+                  {row}
+                </td>
+                {tickers.map((col) => {
+                  const val = matrix[row]?.[col] ?? 0;
+                  const isDiag = row === col;
+                  const isHovered = hoveredCell?.row === row && hoveredCell?.col === col;
+                  return (
+                    <td
+                      key={col}
+                      className="relative p-0.5 text-center"
+                      onMouseEnter={() => setHoveredCell({ row, col, val })}
+                      onMouseLeave={() => setHoveredCell(null)}
+                    >
+                      <div
+                        className="rounded px-2 py-1 font-mono text-xs font-medium transition-all cursor-default"
+                        style={{
+                          background: isDiag ? "rgba(255,255,255,0.05)" : corrColor(val),
+                          color: isDiag ? "#64748b" : Math.abs(val) > 0.5 ? "#000" : "#333",
+                          outline: isHovered ? "2px solid #3b82f6" : "none",
+                        }}
+                      >
+                        {isDiag ? "—" : val.toFixed(2)}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {hoveredCell && hoveredCell.row !== hoveredCell.col && (
+        <p className="mt-2 text-xs text-slate-400">
+          <strong className="font-mono text-white">{hoveredCell.row}</strong>
+          {" ↔ "}
+          <strong className="font-mono text-white">{hoveredCell.col}</strong>
+          {": "}
+          <span
+            className={
+              hoveredCell.val > 0.3
+                ? "text-green-400"
+                : hoveredCell.val < -0.3
+                ? "text-red-400"
+                : "text-slate-300"
+            }
+          >
+            {hoveredCell.val.toFixed(4)}{" "}
+            {hoveredCell.val > 0.7
+              ? "(strong positive)"
+              : hoveredCell.val > 0.3
+              ? "(moderate positive)"
+              : hoveredCell.val < -0.7
+              ? "(strong negative)"
+              : hoveredCell.val < -0.3
+              ? "(moderate negative)"
+              : "(weak / uncorrelated)"}
+          </span>
+        </p>
+      )}
     </div>
   );
 }

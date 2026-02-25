@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -9,17 +9,29 @@ import {
   getBacktest,
   getSentiment,
   getInsights,
+  getForecast,
 } from "@/lib/api";
-import type { PortfolioResponse } from "@/lib/types";
+import type { PortfolioResponse, PositionInput, PortfolioPositionSummary } from "@/lib/types";
 import PortfolioForm from "@/components/PortfolioForm";
 import CausalGraph from "@/components/CausalGraph";
 import BacktestChart from "@/components/BacktestChart";
 import AgentInsights from "@/components/AgentInsights";
 import LivePrices from "@/components/LivePrices";
 import RiskMetrics from "@/components/RiskMetrics";
-import { Loader2, BarChart2, GitBranch, Brain, Zap, TrendingUp } from "lucide-react";
+import ForecastChart from "@/components/ForecastChart";
+import PortfolioSimulator from "@/components/PortfolioSimulator";
+import {
+  Loader2,
+  BarChart2,
+  GitBranch,
+  Brain,
+  Zap,
+  TrendingUp,
+  LineChart,
+  SlidersHorizontal,
+} from "lucide-react";
 
-type Tab = "causal" | "backtest" | "sentiment" | "insights" | "live";
+type Tab = "causal" | "backtest" | "insights" | "sentiment" | "forecast" | "simulator" | "live";
 
 function SkeletonCard() {
   return (
@@ -41,7 +53,7 @@ function AnalyzePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Pre-fill tickers from URL params (e.g., from landing page example links)
+  // Pre-fill tickers from URL params
   const urlTickers = searchParams.get("tickers") || "";
 
   const handleAnalyze = async (
@@ -49,7 +61,8 @@ function AnalyzePage() {
     period: "1y" | "2y" | "5y",
     benchmark: string,
     fKey?: string,
-    gKey?: string
+    gKey?: string,
+    positions?: PositionInput[]
   ) => {
     setIsAnalyzing(true);
     setError(null);
@@ -66,6 +79,7 @@ function AnalyzePage() {
         benchmark,
         finnhub_api_key: fKey || undefined,
         groq_api_key: gKey || undefined,
+        positions: positions && positions.length > 0 ? positions : undefined,
       });
       setAnalysisResult(result);
       setPortfolioId(result.portfolio_id);
@@ -82,15 +96,20 @@ function AnalyzePage() {
     { id: "backtest", label: "Backtest", icon: BarChart2 },
     { id: "insights", label: "AI Insights", icon: Brain },
     { id: "sentiment", label: "Sentiment", icon: TrendingUp },
+    { id: "forecast", label: "Forecast", icon: LineChart },
+    { id: "simulator", label: "Simulator", icon: SlidersHorizontal },
     { id: "live", label: "Live Prices", icon: Zap },
   ];
+
+  const pnlSummary: PortfolioPositionSummary | undefined =
+    analysisResult?.pnl_summary ?? undefined;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-white">Portfolio Analyzer</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Enter ticker symbols to discover causal relationships, run backtests, and get AI insights.
+          Enter ticker symbols to discover causal relationships, run backtests, Prophet forecasts, and get AI insights.
         </p>
       </div>
 
@@ -114,8 +133,9 @@ function AnalyzePage() {
           <Loader2 className="h-10 w-10 animate-spin text-brand-500" />
           <p className="text-slate-300 font-medium">Running analysis…</p>
           <p className="text-sm text-slate-500">
-            Fetching data → Causal discovery → Backtest → AI insights
+            Fetching data → Causal discovery → Backtest → Prophet forecast → AI insights
           </p>
+          <p className="text-xs text-slate-600">Prophet forecasting may take 1–2 minutes for large portfolios</p>
         </div>
       )}
 
@@ -129,10 +149,18 @@ function AnalyzePage() {
             value={`${analysisResult.summary.portfolio_total_return > 0 ? "+" : ""}${analysisResult.summary.portfolio_total_return.toFixed(1)}%`}
             positive={analysisResult.summary.portfolio_total_return > 0}
           />
-          <Stat
-            label="Top Performer"
-            value={`${analysisResult.summary.top_performer} +${analysisResult.summary.top_performer_return.toFixed(1)}%`}
-          />
+          {pnlSummary ? (
+            <Stat
+              label="Portfolio P&L"
+              value={`${pnlSummary.total_pnl >= 0 ? "+" : ""}$${Math.abs(pnlSummary.total_pnl).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} (${pnlSummary.total_pnl_pct >= 0 ? "+" : ""}${pnlSummary.total_pnl_pct.toFixed(1)}%)`}
+              positive={pnlSummary.total_pnl >= 0}
+            />
+          ) : (
+            <Stat
+              label="Top Performer"
+              value={`${analysisResult.summary.top_performer} +${analysisResult.summary.top_performer_return.toFixed(1)}%`}
+            />
+          )}
         </div>
       )}
 
@@ -160,14 +188,26 @@ function AnalyzePage() {
             <Suspense fallback={<SkeletonCard />}>
               {activeTab === "causal" && <CausalGraphTab portfolioId={portfolioId} />}
               {activeTab === "backtest" && <BacktestTab portfolioId={portfolioId} />}
-              {activeTab === "insights" && <InsightsTab portfolioId={portfolioId} />}
+              {activeTab === "insights" && (
+                <InsightsTab portfolioId={portfolioId} pnlSummary={pnlSummary} />
+              )}
               {activeTab === "sentiment" && (
                 <SentimentTab portfolioId={portfolioId} finnhubKey={finnhubKey} />
+              )}
+              {activeTab === "forecast" && (
+                <ForecastTab portfolioId={portfolioId} />
+              )}
+              {activeTab === "simulator" && (
+                <SimulatorTab
+                  portfolioId={portfolioId}
+                  tickers={analysisResult?.tickers || []}
+                />
               )}
               {activeTab === "live" && (
                 <LiveTab
                   tickers={analysisResult?.tickers || []}
                   finnhubKey={finnhubKey}
+                  portfolioId={portfolioId}
                 />
               )}
             </Suspense>
@@ -228,14 +268,20 @@ function BacktestTab({ portfolioId }: { portfolioId: string }) {
   ) : null;
 }
 
-function InsightsTab({ portfolioId }: { portfolioId: string }) {
+function InsightsTab({
+  portfolioId,
+  pnlSummary,
+}: {
+  portfolioId: string;
+  pnlSummary?: PortfolioPositionSummary;
+}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["insights", portfolioId],
     queryFn: () => getInsights(portfolioId),
   });
   if (isLoading) return <SkeletonCard />;
   if (error) return <ErrorCard message={(error as Error).message} />;
-  return data ? <AgentInsights data={data} /> : null;
+  return data ? <AgentInsights data={data} pnlSummary={pnlSummary} /> : null;
 }
 
 function SentimentTab({
@@ -291,23 +337,69 @@ function SentimentTab({
   );
 }
 
+function ForecastTab({ portfolioId }: { portfolioId: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["forecast", portfolioId],
+    queryFn: () => getForecast(portfolioId),
+    staleTime: 30 * 60 * 1000,
+  });
+  if (isLoading) return <SkeletonCard />;
+  if (error) return <ErrorCard message={(error as Error).message} />;
+  if (!data) return null;
+
+  const tickerEntries = Object.entries(data.ticker_forecasts);
+  if (tickerEntries.length === 0) {
+    return (
+      <div className="rounded-xl border border-surface-border bg-surface-card p-8 text-center text-sm text-slate-500">
+        No forecast data available. Run analysis to generate Prophet forecasts.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {tickerEntries.map(([ticker, tickerForecast]) => {
+        if (!tickerForecast || tickerForecast.historical.length === 0) return null;
+        return <ForecastChart key={ticker} forecast={tickerForecast} />;
+      })}
+    </div>
+  );
+}
+
+function SimulatorTab({
+  portfolioId,
+  tickers,
+}: {
+  portfolioId: string;
+  tickers: string[];
+}) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["forecast", portfolioId],
+    queryFn: () => getForecast(portfolioId),
+    staleTime: 30 * 60 * 1000,
+  });
+  if (isLoading) return <SkeletonCard />;
+  if (error) return <ErrorCard message={(error as Error).message} />;
+  if (!data) return null;
+
+  return <PortfolioSimulator tickers={tickers} forecastResult={data} />;
+}
+
 function LiveTab({
   tickers,
   finnhubKey,
+  portfolioId,
 }: {
   tickers: string[];
   finnhubKey: string;
+  portfolioId?: string;
 }) {
-  return <LivePrices tickers={tickers} finnhubKey={finnhubKey} />;
+  return (
+    <LivePrices tickers={tickers} finnhubKey={finnhubKey} portfolioId={portfolioId} />
+  );
 }
 
-function SentimentBadge({
-  label,
-  score,
-}: {
-  label: string;
-  score: number;
-}) {
+function SentimentBadge({ label, score }: { label: string; score: number }) {
   const cls =
     label === "positive"
       ? "badge-green"
@@ -329,11 +421,7 @@ function SentimentDot({ label }: { label: string }) {
       : label === "negative"
       ? "bg-red-400"
       : "bg-yellow-400";
-  return (
-    <span
-      className={`mt-0.5 h-2 w-2 flex-shrink-0 rounded-full ${color}`}
-    />
-  );
+  return <span className={`mt-0.5 h-2 w-2 flex-shrink-0 rounded-full ${color}`} />;
 }
 
 function ErrorCard({ message }: { message: string }) {

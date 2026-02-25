@@ -25,6 +25,8 @@ def _rule_based_insights(
     causal_graph: dict,
     backtest_metrics: dict,
     sentiment: dict,
+    pnl_summary: Optional[dict] = None,
+    forecast_summary: Optional[dict] = None,
 ) -> dict:
     """Generate structured insights without an LLM."""
     nodes = causal_graph.get("nodes", [])
@@ -32,6 +34,25 @@ def _rule_based_insights(
     metrics = backtest_metrics
 
     findings = []
+
+    # P&L insight
+    if pnl_summary and pnl_summary.get("total_pnl") is not None:
+        total_pnl = pnl_summary["total_pnl"]
+        total_pnl_pct = pnl_summary["total_pnl_pct"]
+        direction = "gain" if total_pnl >= 0 else "loss"
+        findings.append(
+            f"Portfolio P&L: ${abs(total_pnl):,.2f} {direction} "
+            f"({'+' if total_pnl_pct >= 0 else ''}{total_pnl_pct:.2f}%) from purchase prices."
+        )
+        # Highlight best and worst positions
+        positions = pnl_summary.get("positions", [])
+        if positions:
+            best = max(positions, key=lambda p: p.get("pnl_pct", 0))
+            worst = min(positions, key=lambda p: p.get("pnl_pct", 0))
+            findings.append(
+                f"Best position: {best['ticker']} (+{best['pnl_pct']:.1f}%). "
+                f"Weakest position: {worst['ticker']} ({worst['pnl_pct']:.1f}%)."
+            )
 
     # Identify causal driver (highest out-degree / centrality)
     if nodes:
@@ -70,6 +91,27 @@ def _rule_based_insights(
     if alpha > 0:
         findings.append(f"Portfolio generates positive alpha ({alpha:.2f}%) relative to the benchmark.")
 
+    # Prophet forecast insights
+    signals = []
+    if forecast_summary:
+        for ticker, fc in forecast_summary.items():
+            ret = fc.get("expected_return_pct", 0)
+            price = fc.get("forecast_1y_price", 0)
+            if ret > 15:
+                signals.append(
+                    f"Buy signal: Prophet model forecasts {ticker} at ${price:.2f} "
+                    f"(+{ret:.1f}% in 1 year)"
+                )
+            elif ret < -10:
+                signals.append(
+                    f"Caution: Prophet model forecasts {ticker} at ${price:.2f} "
+                    f"({ret:.1f}% in 1 year) — consider reducing exposure"
+                )
+            else:
+                signals.append(
+                    f"{ticker}: Prophet 1-year forecast ${price:.2f} ({'+' if ret >= 0 else ''}{ret:.1f}%)"
+                )
+
     # Risk assessment
     if mdd < -30:
         risk_level = "high"
@@ -82,7 +124,6 @@ def _rule_based_insights(
         risk_text = f"Low risk: Maximum drawdown of {mdd:.1f}% shows strong capital preservation."
 
     # Sentiment signals
-    signals = []
     if sentiment:
         ticker_sent = sentiment.get("ticker_sentiment", {})
         positive = [t for t, s in ticker_sent.items() if s.get("overall_label") == "positive"]
@@ -98,8 +139,13 @@ def _rule_based_insights(
         f"{'The causal network suggests information flows from ' + edges[0]['source'] + ' to other assets. ' if edges else ''}"
         f"Backtesting over the selected period shows a Sharpe ratio of {sharpe:.2f} with a maximum drawdown of {mdd:.1f}%. "
         f"{risk_text} "
-        f"{'Positive market sentiment supports the current positioning.' if len(positive if sentiment else []) > len(negative if sentiment else []) else ''}"
     )
+
+    if pnl_summary and pnl_summary.get("total_pnl") is not None:
+        total_pnl = pnl_summary["total_pnl"]
+        narrative += (
+            f"Current portfolio P&L is ${total_pnl:+,.2f} ({pnl_summary['total_pnl_pct']:+.2f}%). "
+        )
 
     return {
         "key_findings": findings,
@@ -118,6 +164,8 @@ class AgentState(TypedDict):
     causal_graph: dict
     backtest_metrics: dict
     sentiment: dict
+    pnl_summary: Optional[dict]
+    forecast_summary: Optional[dict]
     analyst_output: str
     risk_output: str
     final_insights: dict
@@ -182,6 +230,21 @@ Be specific and avoid generic advice."""
             f"{t}: {s.get('overall_label','neutral')} ({s.get('overall_score',0):.2f})"
             for t, s in sent.items()
         )
+        pnl = state.get("pnl_summary") or {}
+        pnl_text = ""
+        if pnl.get("total_pnl") is not None:
+            pnl_text = (
+                f"\nPortfolio P&L from purchase prices: ${pnl['total_pnl']:+,.2f} "
+                f"({pnl['total_pnl_pct']:+.2f}%)"
+            )
+
+        forecast = state.get("forecast_summary") or {}
+        forecast_text = ""
+        if forecast:
+            forecast_text = "\nProphet 1-year price forecasts:\n" + "\n".join(
+                f"  {t}: ${v['forecast_1y_price']:.2f} ({v['expected_return_pct']:+.1f}%)"
+                for t, v in forecast.items()
+            )
 
         prompt = f"""You are a portfolio risk manager.
 
@@ -194,13 +257,15 @@ Backtest metrics:
 - Alpha vs benchmark: {m.get('alpha', 0):.2f}%
 - Beta: {m.get('beta', 0):.2f}
 - Win Rate: {m.get('win_rate', 0):.2f}%
+{pnl_text}
+{forecast_text}
 
 Current sentiment: {sent_summary or 'No sentiment data'}
 
 In 2-3 sentences:
 1. Assess risk level (low/medium/high) and why
-2. Identify the main risk factor for this portfolio
-3. One concrete risk mitigation suggestion"""
+2. Identify the main risk factor considering P&L and forecasts
+3. One concrete risk mitigation or rebalancing suggestion based on the forecast data"""
 
         response = llm.invoke(prompt)
         state["risk_output"] = response.content
@@ -263,6 +328,8 @@ async def generate_insights(
     causal_graph: dict,
     backtest_metrics: dict,
     sentiment: dict,
+    pnl_summary: Optional[dict] = None,
+    forecast_summary: Optional[dict] = None,
     groq_api_key: Optional[str] = None,
 ) -> dict:
     """
@@ -278,19 +345,21 @@ async def generate_insights(
 
     if not api_key:
         logger.info("No GROQ_API_KEY — using rule-based insights fallback")
-        return _rule_based_insights(causal_graph, backtest_metrics, sentiment)
+        return _rule_based_insights(causal_graph, backtest_metrics, sentiment, pnl_summary, forecast_summary)
 
     try:
         import asyncio
         agent_graph = _build_agent_graph()
 
         if agent_graph is None:
-            return _rule_based_insights(causal_graph, backtest_metrics, sentiment)
+            return _rule_based_insights(causal_graph, backtest_metrics, sentiment, pnl_summary, forecast_summary)
 
         initial_state = AgentState(
             causal_graph=causal_graph,
             backtest_metrics=backtest_metrics,
             sentiment=sentiment,
+            pnl_summary=pnl_summary,
+            forecast_summary=forecast_summary,
             analyst_output="",
             risk_output="",
             final_insights={},
@@ -301,10 +370,10 @@ async def generate_insights(
         insights = result.get("final_insights", {})
 
         if not insights:
-            return _rule_based_insights(causal_graph, backtest_metrics, sentiment)
+            return _rule_based_insights(causal_graph, backtest_metrics, sentiment, pnl_summary, forecast_summary)
 
         return insights
 
     except Exception as e:
         logger.error(f"Agent pipeline failed: {e}. Falling back to rule-based insights.")
-        return _rule_based_insights(causal_graph, backtest_metrics, sentiment)
+        return _rule_based_insights(causal_graph, backtest_metrics, sentiment, pnl_summary, forecast_summary)

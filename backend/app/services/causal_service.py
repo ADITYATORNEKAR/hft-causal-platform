@@ -238,14 +238,26 @@ def format_for_frontend(
     return {"nodes": nodes, "edges": edges}
 
 
+def compute_correlation_matrix(returns_df: pd.DataFrame) -> dict:
+    """
+    Compute Pearson correlation matrix between all tickers.
+    Returns nested dict: {ticker -> {ticker -> correlation_coefficient}}.
+    """
+    corr = returns_df.corr().round(4)
+    return corr.to_dict()
+
+
 def run_full_causal_pipeline(returns_df: pd.DataFrame) -> dict:
     """
     Convenience wrapper: runs discovery + effects + formatting in one call.
+    Uses alpha=0.1 (more permissive than 0.05) to discover more edges.
+    Also computes Pearson correlation matrix as supplemental data.
     """
     node_stats = _compute_node_stats(returns_df)
-    dag_result = run_causal_discovery(returns_df)
+    dag_result = run_causal_discovery(returns_df, significance_level=0.1)
     effects = compute_treatment_effects(returns_df, dag_result)
     graph = format_for_frontend(dag_result, effects, node_stats)
     graph["algorithm"] = "PC (Peter-Clark)"
-    graph["significance_threshold"] = 0.05
+    graph["significance_threshold"] = 0.1
+    graph["correlation_matrix"] = compute_correlation_matrix(returns_df)
     return graph

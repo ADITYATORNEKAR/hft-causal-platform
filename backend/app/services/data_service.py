@@ -227,6 +227,37 @@ async def fetch_news(
     return articles[:count]
 
 
+async def search_ticker(query: str, finnhub_api_key: Optional[str] = None) -> list[dict]:
+    """
+    Search for ticker symbols by company name using Finnhub /search endpoint.
+    Returns up to 10 matching [{symbol, description, type}].
+    Falls back to empty list if no API key or request fails.
+    """
+    import httpx
+    api_key = finnhub_api_key or os.getenv("FINNHUB_API_KEY", "")
+    if not api_key or not query.strip():
+        return []
+
+    url = f"https://finnhub.io/api/v1/search?q={query.strip()}&token={api_key}"
+    async with httpx.AsyncClient(timeout=5) as client:
+        try:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            data = resp.json()
+            return [
+                {
+                    "symbol": r["symbol"],
+                    "description": r.get("description", r["symbol"]),
+                    "type": r.get("type", ""),
+                }
+                for r in data.get("result", [])[:10]
+                if r.get("type") in ("Common Stock", "ETP", "ADR")
+            ]
+        except Exception as e:
+            logger.warning(f"Ticker search failed for '{query}': {e}")
+            return []
+
+
 async def fetch_macro_indicators(fred_api_key: Optional[str] = None) -> dict:
     """
     Fetch macro indicators from FRED (free API key required).
