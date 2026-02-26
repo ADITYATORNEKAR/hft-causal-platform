@@ -63,14 +63,13 @@ export default function LandingPage() {
         </div>
 
         <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-6xl">
-          Smarter decisions,{" "}
-          <span className="text-brand-500">not just</span>{" "}
-          correlations.
+          Smarter decisions driven by{" "}
+          <span className="text-brand-500">causation</span>,{" "}
+          not just correlation.
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-slate-400">
-          Enter your portfolio and get 12-month forecasts, causal relationships,
-          portfolio optimization, and prescriptive AI insights — all powered by
-          a 100% free stack.
+          Have your portfolio optimized and unlock 12-month forecasts, advanced
+          simulations and prescriptive AI insights.
         </p>
 
         <div className="mt-10 flex flex-col sm:flex-row gap-4">
