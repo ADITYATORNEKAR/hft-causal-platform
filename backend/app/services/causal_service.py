@@ -127,7 +127,7 @@ def compute_treatment_effects(
         # Controls: all other tickers
         controls = [t for t in tickers if t not in (src, tgt)]
 
-        T = data[src].values.reshape(-1, 1)
+        T = data[src].values  # 1D — LinearDML accepts this; avoids sklearn column-vector warning
         Y = data[tgt].values
         X = data[controls].values if controls else np.ones((len(T), 1))
 

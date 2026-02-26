@@ -22,11 +22,16 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 # ── Live-price cache ───────────────────────────────────────────────────────────
-# Keyed by (ticker, api_key_hash).  Entries expire after PRICE_CACHE_TTL seconds
-# so Finnhub is called at most once per ticker per TTL window (~44 calls/min
-# for 11 tickers with TTL=15s vs. the free-tier cap of 60 calls/min).
-_PRICE_CACHE: dict[str, dict] = {}   # {"AAPL": {"ts": float, "data": dict}}
+# Entries expire after PRICE_CACHE_TTL seconds so Finnhub is called at most
+# once per ticker per TTL window (~44 calls/min for 11 tickers vs. 60/min cap).
+_PRICE_CACHE: dict[str, dict] = {}
 PRICE_CACHE_TTL = 15  # seconds
+
+# ── News cache ─────────────────────────────────────────────────────────────────
+# News changes infrequently; cache for 5 minutes to avoid hammering Finnhub
+# when multiple tickers fire in parallel during sentiment analysis.
+_NEWS_CACHE: dict[str, dict] = {}
+NEWS_CACHE_TTL = 300  # seconds (5 minutes)
 
 
 def _cache_get(ticker: str) -> Optional[dict]:
@@ -38,6 +43,17 @@ def _cache_get(ticker: str) -> Optional[dict]:
 
 def _cache_set(ticker: str, data: dict) -> None:
     _PRICE_CACHE[ticker] = {"ts": time.monotonic(), "data": data}
+
+
+def _news_cache_get(ticker: str) -> Optional[list]:
+    entry = _NEWS_CACHE.get(ticker)
+    if entry and (time.monotonic() - entry["ts"]) < NEWS_CACHE_TTL:
+        return entry["data"]
+    return None
+
+
+def _news_cache_set(ticker: str, data: list) -> None:
+    _NEWS_CACHE[ticker] = {"ts": time.monotonic(), "data": data}
 
 
 # Free finance RSS feeds (no API key needed)
@@ -205,7 +221,13 @@ async def fetch_news(
     """
     Fetch recent news articles for a ticker.
     Uses Finnhub news (if key available) + Yahoo Finance RSS as fallback.
+    Results are cached for NEWS_CACHE_TTL seconds to avoid parallel 429s.
     """
+    # Return cached result if still fresh
+    cached = _news_cache_get(ticker)
+    if cached is not None:
+        return cached[:count]
+
     articles = []
     api_key = finnhub_api_key or os.getenv("FINNHUB_API_KEY", "")
 
@@ -221,17 +243,20 @@ async def fetch_news(
         async with httpx.AsyncClient(timeout=10) as client:
             try:
                 resp = await client.get(url)
-                resp.raise_for_status()
-                for item in resp.json()[:count]:
-                    articles.append({
-                        "headline": item.get("headline", ""),
-                        "url": item.get("url", ""),
-                        "source": item.get("source", "Finnhub"),
-                        "published_at": datetime.fromtimestamp(
-                            item.get("datetime", 0), tz=timezone.utc
-                        ).isoformat(),
-                        "raw_text": item.get("summary", item.get("headline", "")),
-                    })
+                if resp.status_code == 429:
+                    logger.debug(f"Finnhub news 429 for {ticker}, using RSS fallback")
+                else:
+                    resp.raise_for_status()
+                    for item in resp.json()[:count]:
+                        articles.append({
+                            "headline": item.get("headline", ""),
+                            "url": item.get("url", ""),
+                            "source": item.get("source", "Finnhub"),
+                            "published_at": datetime.fromtimestamp(
+                                item.get("datetime", 0), tz=timezone.utc
+                            ).isoformat(),
+                            "raw_text": item.get("summary", item.get("headline", "")),
+                        })
             except Exception as e:
                 logger.warning(f"Finnhub news failed for {ticker}: {e}")
 
@@ -259,7 +284,10 @@ async def fetch_news(
         except Exception as e:
             logger.warning(f"RSS fetch failed for {ticker}: {e}")
 
-    return articles[:count]
+    result = articles[:count]
+    if result:
+        _news_cache_set(ticker, result)
+    return result
 
 
 async def search_ticker(query: str, finnhub_api_key: Optional[str] = None) -> list[dict]:
