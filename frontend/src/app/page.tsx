@@ -59,7 +59,7 @@ export default function LandingPage() {
       <section className="flex flex-col items-center py-24 text-center">
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-medium text-brand-500">
           <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
-          100% Free Stack — No Credit Card Ever
+          100% Free Stack
         </div>
 
         <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-6xl">
