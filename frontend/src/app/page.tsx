@@ -63,9 +63,8 @@ export default function LandingPage() {
         </div>
 
         <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-6xl">
-          Smarter decisions driven by{" "}
-          <span className="text-brand-500">causation</span>,{" "}
-          not just correlation.
+          Beyond the trendline: Portfolio optimization through{" "}
+          <span className="text-brand-500">causal intelligence</span>.
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-slate-400">
           Have your portfolio optimized and unlock 12-month forecasts, advanced
