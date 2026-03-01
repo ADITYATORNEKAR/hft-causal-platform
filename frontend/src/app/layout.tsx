@@ -70,7 +70,7 @@ export default function RootLayout({
           <footer className="mt-24 border-t border-surface-border py-8">
             <div className="mx-auto max-w-7xl px-4 text-center text-sm text-slate-500">
               <p>
-                PortfolioIQ — 100% free stack. Built by{" "}
+                PortfolioIQ — Built by{" "}
                 <a
                   href="https://github.com/ADITYATORNEKAR"
                   className="text-brand-500 hover:underline"

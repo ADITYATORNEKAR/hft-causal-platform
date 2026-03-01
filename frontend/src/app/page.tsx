@@ -57,11 +57,6 @@ export default function LandingPage() {
     <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       {/* Hero */}
       <section className="flex flex-col items-center py-24 text-center">
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-1 text-xs font-medium text-brand-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
-          100% Free Stack
-        </div>
-
         <h1 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-6xl">
           Beyond the trendline: Portfolio optimization through{" "}
           <span className="text-brand-500">causal intelligence</span>.
@@ -132,23 +127,21 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Free stack callout */}
       <section className="py-16">
         <div className="rounded-2xl border border-brand-500/20 bg-brand-500/5 p-8">
           <h2 className="mb-6 text-xl font-bold text-white">
-            100% Free Infrastructure
+            Powered By
           </h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
-              { label: "Historical Data", value: "yfinance", note: "No API key" },
-              { label: "Forecasting", value: "FB Prophet", note: "Open source" },
-              { label: "AI Agents", value: "Groq Llama-3.3", note: "Free tier" },
-              { label: "Deployment", value: "Render + Vercel", note: "Always-on free" },
+              { label: "Historical Data", value: "yfinance" },
+              { label: "Forecasting", value: "FB Prophet" },
+              { label: "AI Agents", value: "Groq Llama-3.3" },
+              { label: "Deployment", value: "Render + Vercel" },
             ].map((item) => (
               <div key={item.label} className="text-center">
                 <p className="text-xs text-slate-500 uppercase tracking-wide">{item.label}</p>
                 <p className="mt-1 font-semibold text-white">{item.value}</p>
-                <p className="text-xs text-green-400">{item.note}</p>
               </div>
             ))}
           </div>
