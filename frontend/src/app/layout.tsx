@@ -51,7 +51,7 @@ export default function RootLayout({
                     Analyze Portfolio
                   </Link>
                   <a
-                    href="https://github.com/ADITYATORNEKAR/hft-causal-platform"
+                    href="https://github.com/ADITYATORNEKAR/portfolioiq"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-slate-400 hover:text-white transition-colors"

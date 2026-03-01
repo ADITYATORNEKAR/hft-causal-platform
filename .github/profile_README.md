@@ -12,7 +12,7 @@ Building intelligent systems at the intersection of causal inference, high-frequ
 
 An AI-powered portfolio analytics platform combining causal inference, 12-month forecasting, portfolio optimization, and multi-agent AI insights to give investors prescriptive BUY/HOLD/TRIM signals.
 
-**[→ Explore the Repository](https://github.com/ADITYATORNEKAR/hft-causal-platform)**
+**[→ Explore the Repository](https://github.com/ADITYATORNEKAR/portfolioiq)**
 
 ### 🎯 Key Capabilities
 
@@ -51,9 +51,9 @@ Traditional quantitative models fail in chaotic markets because they confuse **s
 
 ### 🔗 Quick Links
 
-- **[Full Documentation](https://github.com/ADITYATORNEKAR/hft-causal-platform/blob/main/README.md)** - Comprehensive architecture & strategy
-- **[Backend Setup](https://github.com/ADITYATORNEKAR/hft-causal-platform/blob/main/backend/README.md)** - API & service details
-- **[Frontend Setup](https://github.com/ADITYATORNEKAR/hft-causal-platform/blob/main/frontend/README.md)** - Dashboard configuration
+- **[Full Documentation](https://github.com/ADITYATORNEKAR/portfolioiq/blob/main/README.md)** - Comprehensive architecture & strategy
+- **[Backend Setup](https://github.com/ADITYATORNEKAR/portfolioiq/blob/main/backend/README.md)** - API & service details
+- **[Frontend Setup](https://github.com/ADITYATORNEKAR/portfolioiq/blob/main/frontend/README.md)** - Dashboard configuration
 
 ---
 
@@ -119,7 +119,7 @@ My approach: *Marry cutting-edge research with battle-tested engineering practic
 
 | Project | Description |
 |---------|------------|
-| **[PortfolioIQ](https://github.com/ADITYATORNEKAR/hft-causal-platform)** | 🏆 Primary: AI portfolio intelligence — causal inference, forecasting, multi-agent insights |
+| **[PortfolioIQ](https://github.com/ADITYATORNEKAR/portfolioiq)** | 🏆 Primary: AI portfolio intelligence — causal inference, forecasting, multi-agent insights |
 | **[quantitative-research](link-coming-soon)** | Quantitative strategies & backtesting frameworks |
 | **[ml-infrastructure](link-coming-soon)** | Production ML systems & deployment patterns |
 

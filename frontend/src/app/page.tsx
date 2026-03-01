@@ -75,7 +75,7 @@ export default function LandingPage() {
             <ArrowRight className="h-4 w-4" />
           </Link>
           <a
-            href="https://github.com/ADITYATORNEKAR/hft-causal-platform"
+            href="https://github.com/ADITYATORNEKAR/portfolioiq"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-xl border border-surface-border px-8 py-3.5 text-base font-medium text-slate-300 hover:text-white hover:border-slate-500 transition-colors"
