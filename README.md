@@ -5,7 +5,7 @@
 
 A full-stack portfolio analytics platform combining causal inference, 12-month AI forecasting, portfolio optimization, and multi-agent AI insights. Built entirely on a **100% free** stack — no credit card, no paid tiers.
 
-Live demo: `https://portfolioiq.vercel.app` · API docs: `https://hft-causal-platform.onrender.com/docs`
+Live demo: `https://portfolioiq.vercel.app](https://hft-causal-platform.vercel.app/` · API docs: `https://hft-causal-platform.onrender.com/docs`
 
 ---
 
